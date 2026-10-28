@@ -50,7 +50,7 @@ VERBS = {
     "browser.visit": lambda r: [os.path.expanduser("~/.local/bin/resident-browse"), r],
 }
 MUTATING = {"container.restart", "unit.restart"}
-BUDGET_KEYS = ("usd_per_day", "memory_mb", "cpus")
+BUDGET_KEYS = ("memory_mb", "cpus")
 
 
 def now():
@@ -128,7 +128,7 @@ def summarize(pol):
     caps = "; ".join(f"{k} {v}" for k, v in pol["capabilities"].items() if k != "spawn")
     b = pol["budget"]
     return (f"spawn={pol['capabilities'].get('spawn', False)}; {caps or 'no capabilities'}; "
-            f"approval for {pol['approval_required']['verbs']}; budget ${b.get('usd_per_day', 0):g}/day "
+            f"approval for {pol['approval_required']['verbs']}; budget "
             f"{b.get('memory_mb', 0)}MB {b.get('cpus', 0)}cpu, max {b.get('max_children', 0)} children")
 
 
@@ -339,7 +339,21 @@ def pending():
     return out
 
 
-def decide(aid, approve, who=OWNER):
+def owner_credential():
+    """Path of the owner's enrolled passkey (written by home/home.py); once it exists, approvals need it."""
+    return os.path.join(os.environ.get("RESIDENT_HOME_STATE") or os.path.join(ROOT, "home"), "owner.json")
+
+
+def decide(aid, approve, who=OWNER, passkey=False):
+    if approve and not passkey and os.path.exists(owner_credential()):
+        host = os.environ.get("RESIDENT_HOME_RPID") or "<host>"
+        if host == "<host>":
+            try:
+                host = json.loads(subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True,
+                                                 timeout=10).stdout)["Self"]["DNSName"].rstrip(".") or host
+            except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+                pass
+        die(f"approvals now require the owner's passkey — open https://{host}/resident/ (deny still works here)")
     p = os.path.join(APPROVALS, f"{aid}.json")
     if not os.path.exists(p):
         die(f"no approval {aid}")
@@ -400,7 +414,7 @@ def tree_text(compact=False):
             score = short_score(subprocess.run(["docker", "exec", name, "resident", "score"], capture_output=True,
                                                text=True).stdout) if state == "running" else ""
         kids = children(name)
-        parts = [f"{name} [{state}]", f"${b.get('usd_per_day', 0):g}/day", f"{int(b.get('memory_mb', 0))}MB",
+        parts = [f"{name} [{state}]", f"{int(b.get('memory_mb', 0))}MB",
                  f"{b.get('cpus', 0):g} cpu", f"children {len(kids)}/{b.get('max_children', 0)}"]
         if score:
             parts.append(score)

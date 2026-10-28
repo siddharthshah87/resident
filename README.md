@@ -106,12 +106,11 @@ met (1.65×). The report says so.
 - **percept** records window titles and app names only: no screenshots, keystrokes or clipboard. It redacts
   credential-looking titles, keeps 24 hours, records nothing while the screen is locked, and stops with `percept off`.
 - **The browser profile holds logins.** Treat it like a password store. Every visit is logged.
-- Budgets (`usd_per_day`) are checked when a child is created but **not yet metered**.
 
 ## Roadmap
 
 1. Approvals bound to the owner's passkey or phone.
-2. `agentd` inside each body: every child gets its own pulse, and spend is metered against its budget.
+2. `agentd` inside each body: every child gets its own pulse.
 3. Boot `image-vm/` on real hardware (a second SSD, then a Raspberry Pi); A/B updates with automatic rollback.
 4. A first-boot interview whose answers become the head agent's base intents (network, owner, model, remote access, purpose).
 5. End-to-end encrypted backup and one-command respawn of every individual onto new hardware.

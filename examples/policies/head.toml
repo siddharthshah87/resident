@@ -15,7 +15,6 @@ spawn = true
 verbs = ["container.restart", "unit.restart"]   # restarts always need a human, at every level
 
 [budget]
-usd_per_day = 20.0
 memory_mb = 4096
 cpus = 4.0
 max_children = 8

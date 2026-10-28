@@ -12,7 +12,6 @@ spawn = true
 verbs = ["container.restart", "unit.restart"]
 
 [budget]
-usd_per_day = 3.0
 memory_mb = 512
 cpus = 0.5
 max_children = 2
