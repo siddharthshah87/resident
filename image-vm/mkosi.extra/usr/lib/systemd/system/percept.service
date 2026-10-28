@@ -1,0 +1,25 @@
+[Unit]
+Description=percept: perception daemon (system events; window/idle with the desktop variant)
+Documentation=file:///usr/share/doc/resident/percept.md
+After=resident-firstboot.service systemd-journald.service
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+# system journal read is granted by group systemd-journal (sysusers.d). Window titles/idle need
+# the agent's Wayland session (desktop variant): WAYLAND_DISPLAY in /run/user/980.
+Environment=RESIDENT_HOME=/var/lib/resident HOME=/var/lib/resident PYTHONUNBUFFERED=1
+Environment=PERCEPT_HOME=/var/lib/resident/percept
+Environment=XDG_RUNTIME_DIR=/run/user/980 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/980/bus WAYLAND_DISPLAY=wayland-0
+ExecStart=/usr/bin/python3 /usr/lib/resident/percept/percept.py run
+Restart=always
+RestartSec=5
+Nice=10
+ProtectSystem=strict
+ReadWritePaths=/var/lib/resident
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

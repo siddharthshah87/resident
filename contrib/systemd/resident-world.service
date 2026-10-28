@@ -1,0 +1,7 @@
+[Unit]
+Description=resident: regenerate machine.md and record drift
+
+[Service]
+Type=oneshot
+ExecStart=%h/resident/lib/agentos.py world
+StandardOutput=null

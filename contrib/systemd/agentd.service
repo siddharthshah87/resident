@@ -1,0 +1,17 @@
+[Unit]
+Description=agentd: resident resident agent (watches ~/resident/inbox)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/resident/agentd
+Environment=AGENTD_SYSPROMPT=preset
+Environment=PATH=%h/.local/bin:%h/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/flock -n %h/resident/agentd/agentd.service.lock %h/resident/agentd/agentd.py run
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/resident/agentd/agentd.log
+StandardError=append:%h/resident/agentd/agentd.log
+
+[Install]
+WantedBy=default.target

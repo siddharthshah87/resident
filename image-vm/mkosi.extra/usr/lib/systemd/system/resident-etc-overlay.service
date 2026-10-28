@@ -1,0 +1,16 @@
+[Unit]
+Description=resident: persistent writable /etc (overlayfs upper on /var; root stays verity-sealed)
+Documentation=file:///usr/share/doc/resident/README.md
+DefaultDependencies=no
+RequiresMountsFor=/var
+After=var.mount systemd-remount-fs.service
+Before=local-fs.target systemd-tmpfiles-setup.service systemd-sysusers.service systemd-machine-id-commit.service
+ConditionPathIsReadWrite=!/etc
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/resident/etc-overlay.sh
+
+[Install]
+WantedBy=local-fs.target

@@ -1,0 +1,8 @@
+PRETTY_NAME="Resident Linux 26.11 (Kelp) — make your machine your own assistant"
+NAME="Resident Linux"
+ID=resident
+ID_LIKE=debian
+VERSION="26.11 (Kelp)"
+VERSION_ID=26.11
+VERSION_CODENAME=kelp
+VARIANT_ID=metal

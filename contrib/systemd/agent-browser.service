@@ -1,0 +1,25 @@
+[Unit]
+Description=resident system browser: headless Chrome, persistent profile, CDP on 127.0.0.1:9222 (see ~/resident/browser/README.md)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/google-chrome-stable \
+  --headless=new \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 \
+  --user-data-dir=%h/resident/browser/profile \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-background-networking \
+  --disable-sync \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --window-size=1280,900 \
+  about:blank
+WorkingDirectory=%h/resident/browser
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

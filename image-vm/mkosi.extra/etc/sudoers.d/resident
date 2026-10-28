@@ -1,0 +1,8 @@
+# /etc/sudoers.d/resident — the agent's ONLY root path is the audited wrapper.
+# No shell, no apt-get directly, no systemctl directly. The wrapper refuses without RESIDENT_INTENT
+# and checks /etc/resident/policy.toml before acting. Humans (group sudo) are configured elsewhere.
+Defaults:agent  env_reset
+Defaults:agent  env_keep += "RESIDENT_INTENT RESIDENT_HOME"
+Defaults:agent  !lecture, logfile=/var/log/resident/sudo.log, log_input, log_output
+Defaults:agent  iolog_dir=/var/log/resident/sudo-io
+agent  ALL=(root) NOPASSWD: /usr/lib/resident/privileged.sh

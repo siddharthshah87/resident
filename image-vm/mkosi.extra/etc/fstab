@@ -1,0 +1,3 @@
+# /var is the writable partition (gpt-auto skips /var unless UUID is machine-id-keyed; fstab is explicit).
+# Root and /efi are mounted by systemd-gpt-auto-generator from the GPT + roothash=.
+PARTLABEL=var  /var  ext4  defaults,noatime,x-systemd.growfs  0 2

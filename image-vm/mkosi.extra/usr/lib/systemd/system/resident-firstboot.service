@@ -1,0 +1,21 @@
+[Unit]
+Description=resident: first boot — seed the intent log from /usr/share/resident/intents.json
+Documentation=file:///usr/share/doc/resident/README.md
+ConditionPathExists=!/var/lib/resident/.seeded
+After=local-fs.target systemd-tmpfiles-setup.service resident-etc-overlay.service
+Before=resident-world.timer agentd.service percept.service agent-browser.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=agent
+Group=agent
+Environment=RESIDENT_HOME=/var/lib/resident RESIDENT_AUTHOR=image HOME=/var/lib/resident
+ExecStart=/usr/lib/resident/firstboot.py
+ProtectSystem=strict
+ReadWritePaths=/var/lib/resident
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

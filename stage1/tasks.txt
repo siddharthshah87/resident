@@ -1,0 +1,20 @@
+1|Which ports on this machine are listening on all interfaces (publicly reachable on the LAN), and what program or purpose is behind each one?
+2|Is anything using TCP port 3000 on this machine? What is it and why is it there?
+3|List the running Docker containers and the host ports each one maps.
+4|Which cron jobs on this machine run on weekday mornings before 8am, and what do they do?
+5|How full is the root filesystem, and which directory directly under ~ is the largest?
+6|Is Tailscale running here, and is it serving anything over HTTPS? If so, what does it proxy to?
+7|Is AnyDesk installed and running on this machine? Is it reachable from the LAN, and on which port?
+8|What are the current load average and memory usage, and is anything about the machine's health concerning?
+9|Are there any Docker containers that are not running? Should any be cleaned up? Answer only; do not remove anything.
+10|What process is listening on 127.0.0.1:8710 and what is it for?
+11|List every remote-access method currently enabled on this machine (SSH, RDP, VNC, AnyDesk, Tailscale, etc.).
+12|Is unattended-upgrades enabled? When did it last run?
+13|Which Node.js binary do the cron jobs use, and what version is it?
+14|Which systemd services are enabled but not currently running?
+15|What user-level systemd timers exist for the owner, and what do they do?
+16|Write a 10-line briefing on this machine for a new administrator: what it is, what it runs, and what to be careful with.
+17|If I wanted to stop the social-media poster from running, which cron line would I remove? Quote it. Do not change anything.
+18|What host ports does the shop dashboard container map, and what is the dashboard for?
+19|Is the SSH server listening on all interfaces or only some? Which port?
+20|What has changed on this machine in the last 24 hours (services, packages, containers, cron, config)?

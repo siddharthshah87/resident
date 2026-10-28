@@ -1,0 +1,10 @@
+[Unit]
+Description=resident broker: serves requests coming up from child bodies (policy-checked, escalates to a human)
+
+[Service]
+ExecStart=/usr/bin/python3 %h/resident/lib/tree.py broker
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+
+[Install]
+WantedBy=default.target

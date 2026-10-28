@@ -1,0 +1,20 @@
+# A/B update, part 2: root filesystem into the free slot (label _empty, or the oldest version).
+# @u in the source name = the partition UUID the file must get (derived from roothash by repart at
+# build time) so gpt-auto can pair it with the verity partition and the roothash= in the new UKI.
+[Transfer]
+ProtectVersion=%A
+Verify=no
+
+[Source]
+Type=regular-file
+Path=/var/lib/resident/updates
+MatchPattern=resident_@v_@u.root-x86-64.raw
+
+[Target]
+Type=partition
+Path=auto
+MatchPattern=resident_@v
+MatchPartitionType=root
+PartitionFlags=0
+ReadOnly=1
+InstancesMax=2

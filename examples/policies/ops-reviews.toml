@@ -1,0 +1,16 @@
+[individual]
+name = "ops-reviews"
+purpose = "Reads the dashboard's reviews page and drafts replies for the owner to approve"
+
+[capabilities]
+spawn = false
+"browser.visit" = ["http://127.0.0.1:3000/*"]
+
+[approval_required]
+verbs = ["container.restart", "unit.restart"]
+
+[budget]
+usd_per_day = 1.0
+memory_mb = 256
+cpus = 0.25
+max_children = 0

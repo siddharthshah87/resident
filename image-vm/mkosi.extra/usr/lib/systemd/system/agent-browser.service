@@ -1,0 +1,38 @@
+[Unit]
+Description=resident system browser: headless Chromium, persistent profile, CDP on 127.0.0.1:9222
+Documentation=file:///usr/share/doc/resident/browser.md
+After=network-online.target resident-firstboot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/var/lib/resident/browser
+Environment=HOME=/var/lib/resident XDG_CONFIG_HOME=/var/lib/resident/.config XDG_CACHE_HOME=/var/cache/resident
+Environment=XDG_RUNTIME_DIR=/run/user/980
+# Same flags as the user unit on the NUC; binary is Debian's chromium instead of google-chrome-stable.
+ExecStart=/usr/bin/chromium \
+  --headless=new \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 \
+  --user-data-dir=/var/lib/resident/browser/profile \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-background-networking \
+  --disable-sync \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --window-size=1280,900 \
+  about:blank
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+MemoryMax=2G
+ProtectSystem=strict
+ReadWritePaths=/var/lib/resident /var/cache/resident
+PrivateTmp=yes
+# The profile is a credential store: nothing but the agent (and root) can read it (0700 via tmpfiles).
+
+[Install]
+WantedBy=multi-user.target

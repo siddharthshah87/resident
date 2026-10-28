@@ -1,0 +1,22 @@
+#!/bin/sh
+# resident-init — runs as PID 1 for a moment, then execs systemd.
+# The root filesystem is read-only. /etc is an empty tmpfs mounted by the container runtime;
+# we populate it from the factory copy (config is a cache: /etc is rebuilt from /usr on every boot),
+# restore the persistent machine-id from /var, then hand over to systemd.
+set -e
+FACTORY=/usr/share/factory/etc
+MID=/var/lib/dbus/machine-id
+
+if [ ! -e /etc/passwd ]; then
+    # /etc is empty (apart from the runtime's bind-mounted hostname/hosts/resolv.conf): hydrate it.
+    cp -a "$FACTORY"/. /etc/
+fi
+
+# machine identity persists in /var (a volume), never in the image
+mkdir -p "$(dirname "$MID")"
+if [ ! -s "$MID" ]; then
+    python3 -c 'import uuid; print(uuid.uuid4().hex)' > "$MID"
+fi
+cp "$MID" /etc/machine-id
+
+exec "${@:-/sbin/init}"

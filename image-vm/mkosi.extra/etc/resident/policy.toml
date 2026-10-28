@@ -1,0 +1,83 @@
+# /etc/resident/policy.toml — what the agent principal may do on this machine, in plain text.
+#
+# This file is the SOURCE. The enforcement files are caches of it (the resident thesis applied to
+# permissions) and each one cites the section it implements:
+#   polkit   /etc/polkit-1/rules.d/50-resident.rules      ← [resources.units] [approval]
+#   dbus     /etc/dbus-1/system.d/resident.conf           ← [bus]
+#   sudo     /etc/sudoers.d/resident + /usr/lib/resident/privileged.sh  ← [resources.packages] [resources.units] [approval]
+#   unix     /usr/lib/sysusers.d/resident.conf, tmpfiles.d/resident.conf ← [principal] [resources.filesystem]
+# The broker (privileged.sh → policy.py) reads this file at every request; `resident why` can cite it.
+
+version = 1
+
+[principal]
+name   = "agent"
+uid    = 980
+groups = ["agent", "systemd-journal", "adm", "docker"]
+home   = "/var/lib/resident"
+shell  = "/bin/bash"
+ssh    = false            # never an ssh principal (sshd DenyUsers agent)
+sudo   = "wrapper-only"   # /usr/lib/resident/privileged.sh, with RESIDENT_INTENT set
+
+[intent]
+# Every privileged act must cite an intent id that exists and is active in the intent log.
+required = true
+db       = "/var/lib/resident/intents.db"
+audit    = "/var/log/resident/privileged.log"
+
+[resources.units]
+# Units the agent may start/stop/restart/reload on its own (polkit + wrapper share this regex).
+manage  = '^(resident-|agentd|percept|agent-browser|shop-app)'
+verbs   = ["start", "stop", "restart", "reload", "status"]
+deny_verbs = ["enable", "disable", "mask", "edit", "daemon-reload"]   # change what boots → approval
+
+[resources.packages]
+verbs = ["install"]
+# names must match this; anything else is refused before apt-get sees it
+name_pattern = '^[a-z0-9][a-z0-9+.-]{1,80}$'
+# the trust base: never installable/replaceable by the agent (they define the agent's own limits)
+deny = ["sudo", "openssh-server", "polkitd", "dbus", "systemd", "systemd-boot", "libpam-*", "linux-image-*", "resident-*"]
+# removal/purge/autoremove are approval verbs, see [approval]
+
+[resources.journal]
+read = true               # group systemd-journal; percept's "system" events come from here
+
+[resources.network]
+read   = true             # describe interfaces, routes, DNS for the world model
+modify = false            # networkd/NM changes, firewall → approval
+
+[resources.filesystem]
+read      = ["/etc/**", "/usr/**", "/var/log/**", "/var/lib/resident/**", "/proc/**", "/sys/**"]
+write     = ["/var/lib/resident/**", "/var/cache/resident/**", "/tmp/**"]
+never     = ["/etc/ssh/authorized_keys.d/**", "/etc/sudoers.d/**", "/etc/polkit-1/**", "/etc/resident/**", "/var/lib/resident/etc-overlay/**", "/efi/**"]
+
+[resources.browser]
+profile  = "/var/lib/resident/browser/profile"   # holds logins → treated like a password store (0700)
+cdp      = "127.0.0.1:9222"
+logged   = true                                 # every visit → browser/visits.jsonl
+
+[resources.perception]
+sources        = ["journal", "window-titles", "idle-state"]
+never          = ["screenshots", "keystrokes", "clipboard", "audio"]
+retention_h    = 24
+kill_switch    = "percept off  →  /var/lib/resident/percept/DISABLED"
+portal_consent = "docs: /usr/share/doc/resident/portal-consent.md (token in /var/lib/resident/consent/)"
+
+[bus]
+own     = ["org.resident.Agent", "org.resident.*"]
+signals = ["org.freedesktop.systemd1", "org.freedesktop.login1"]
+
+[approval]
+# Verbs the agent may PROPOSE (drop an `ask` event / write an intent) but a human must EXECUTE
+# with their own key. The wrapper exits 3 ("approval required") for any of these.
+required = [
+  { verb = "reboot",           why = "ends every session; A/B boot assessment depends on a deliberate reboot" },
+  { verb = "poweroff",         why = "same" },
+  { verb = "package-remove",   why = "removing/purging/autoremove can delete the trust base" },
+  { verb = "firewall",         why = "nft/iptables/ufw changes alter what the LAN can reach" },
+  { verb = "user-accounts",    why = "useradd/usermod/passwd/groupmod/authorized_keys change who is a principal" },
+  { verb = "unit-enable",      why = "enable/disable/mask changes what runs at boot" },
+  { verb = "sysupdate",        why = "A/B update: human runs update.sh; agent may stage artifacts only" },
+  { verb = "policy-edit",      why = "this file, sudoers, polkit, dbus policy" },
+  { verb = "consent",          why = "granting percept/portal access to the human's screen is the human's act" },
+]

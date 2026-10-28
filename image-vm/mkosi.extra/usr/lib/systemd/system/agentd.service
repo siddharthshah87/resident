@@ -1,0 +1,31 @@
+[Unit]
+Description=agentd: resident resident agent (watches /var/lib/resident/inbox)
+Documentation=file:///usr/share/doc/resident/agentd.md
+After=network-online.target resident-firstboot.service
+Wants=network-online.target
+# Both are produced on the box, never baked: API credentials by the human (README "credentials"),
+# the venv by `resident-setup-agentd` on first run with network.
+ConditionPathExists=/var/lib/resident/credentials/claude.env
+ConditionPathExists=/var/lib/resident/agentd/.venv/bin/python
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/var/lib/resident/agentd
+Environment=RESIDENT_HOME=/var/lib/resident HOME=/var/lib/resident AGENTD_SYSPROMPT=preset
+Environment=PATH=/var/lib/resident/agentd/.venv/bin:/var/lib/resident/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=XDG_RUNTIME_DIR=/run/user/980 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/980/bus
+EnvironmentFile=/var/lib/resident/credentials/claude.env
+ExecStart=/usr/bin/flock -n /var/lib/resident/agentd/agentd.service.lock /var/lib/resident/agentd/.venv/bin/python /usr/lib/resident/agentd/agentd.py run
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/lib/resident/agentd/agentd.log
+StandardError=append:/var/lib/resident/agentd/agentd.log
+# No NoNewPrivileges here: the agent's one privilege escalation path is sudo → privileged.sh.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/resident /var/cache/resident /tmp
+PrivateTmp=no
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+#!/usr/bin/bash
+# Shim: run browse.mjs with node (nvm's node is often not on PATH in non-interactive shells).
+# Playwright comes from $RESIDENT_PW_ROOT, or ~/.config/resident/browser.env can set it.
+[ -f "$HOME/.config/resident/browser.env" ] && . "$HOME/.config/resident/browser.env"
+export RESIDENT_PW_ROOT
+NODE=${RESIDENT_NODE:-$(command -v node || ls -1d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | tail -1)}
+[ -x "$NODE" ] || { echo "resident-browse: node not found (set RESIDENT_NODE)" >&2; exit 127; }
+exec "$NODE" "$(dirname "$(readlink -f "$0")")/browse.mjs" "$@"

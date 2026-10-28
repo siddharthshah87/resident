@@ -1,0 +1,22 @@
+# A/B update, part 1: the UKI (kernel+initrd+cmdline incl. roothash of the matching root slot).
+# Installed with 3 tries; systemd-boot prefers the newest version, decrements on each failed boot,
+# resident-health → boot-complete.target → systemd-bless-boot strips the counter when healthy.
+# Source directory is where update.sh stages artifacts (+ SHA256SUMS). Swap for Type=url-file later.
+[Transfer]
+ProtectVersion=%A
+Verify=no
+
+[Source]
+Type=regular-file
+Path=/var/lib/resident/updates
+MatchPattern=resident_@v.efi
+
+[Target]
+Type=regular-file
+Path=/EFI/Linux
+PathRelativeTo=esp
+MatchPattern=resident_@v+@l-@d.efi resident_@v+@l.efi resident_@v.efi
+Mode=0444
+TriesLeft=3
+TriesDone=0
+InstancesMax=2

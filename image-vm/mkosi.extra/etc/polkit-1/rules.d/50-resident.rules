@@ -1,0 +1,61 @@
+// 50-resident.rules — the `agent` principal's D-Bus authority. Mirrors /etc/resident/policy.toml
+// [resources.units] / [approval]. Every rule names the intent it serves (see intents.json "polkit").
+// polkit JS rules (polkitd >= 0.106; Debian trixie ships 125).
+
+var AGENT = "agent";
+// Units the agent runs for itself; it may restart them without a human (intent: self-maintenance,
+// e.g. restart agentd to pick up a new machine.md, restart the browser after a profile login).
+var OWN_UNITS = /^(resident-|agentd|percept|agent-browser|shop-app)/;
+
+polkit.addRule(function (action, subject) {
+    if (subject.user !== AGENT) {
+        return polkit.Result.NOT_HANDLED;          // humans and other services: distro defaults apply
+    }
+
+    // --- systemd: manage its OWN units only -------------------------------------------------
+    if (action.id === "org.freedesktop.systemd1.manage-units") {
+        var unit = action.lookup("unit") || "";
+        var verb = action.lookup("verb") || "";
+        if (OWN_UNITS.test(unit) && /^(start|stop|restart|reload|try-restart|reload-or-restart|kill)$/.test(verb)) {
+            return polkit.Result.YES;              // intent: keep its own daemons alive without sudo
+        }
+        return polkit.Result.NO;                   // anything else (ssh, networkd, docker…) is a human decision
+    }
+    // enable/disable/mask and daemon-reload change what boots: approval-required (policy.toml [approval])
+    if (action.id === "org.freedesktop.systemd1.manage-unit-files" ||
+        action.id === "org.freedesktop.systemd1.reload-daemon" ||
+        action.id === "org.freedesktop.systemd1.set-environment") {
+        return polkit.Result.NO;
+    }
+
+    // --- logind: no power control, ever ---------------------------------------------------------
+    // intent: "reboot" is on the approval list; an agent must not be able to end the human's session
+    // or take the box offline on its own, not even with `-multiple-sessions`/`-ignore-inhibit` variants.
+    if (/^org\.freedesktop\.login1\.(power-off|reboot|halt|suspend|hibernate|sleep|hybrid-sleep|suspend-then-hibernate)/.test(action.id)) {
+        return polkit.Result.NO;
+    }
+    if (/^org\.freedesktop\.login1\.(set-reboot|set-wall-message|inhibit-|lock-sessions|chvt|manage|flush-devices|attach-device)/.test(action.id)) {
+        return polkit.Result.NO;                   // intent: no rebinding seats, no fiddling with others' sessions
+    }
+
+    // --- NetworkManager (if the desktop variant installs it): read yes, change no ---------------
+    // Reading NM state/properties over D-Bus needs no polkit action at all, so "read" is already
+    // allowed; here we make sure nothing that mutates network config is granted implicitly.
+    // intent: the world model may describe the network; changing it is an approval-required verb.
+    if (/^org\.freedesktop\.NetworkManager\./.test(action.id)) {
+        return polkit.Result.NO;
+    }
+
+    // --- hostnamed / timedated / localed: read-only principal -------------------------------
+    if (/^org\.freedesktop\.(hostname1|timedate1|locale1)\./.test(action.id)) {
+        return polkit.Result.NO;                   // intent: identity of the box is the human's
+    }
+
+    // --- packagekit / apt via D-Bus: never. The only install path is sudo privileged.sh install,
+    // which requires an intent id and writes the audit log. ------------------------------------
+    if (/^org\.freedesktop\.packagekit\./.test(action.id) || /^org\.debian\.apt\./.test(action.id)) {
+        return polkit.Result.NO;
+    }
+
+    return polkit.Result.NOT_HANDLED;              // everything else: distro default (usually auth_admin → fails, agent has no password)
+});

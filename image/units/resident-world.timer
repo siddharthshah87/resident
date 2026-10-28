@@ -1,0 +1,10 @@
+[Unit]
+Description=resident world model every 10 minutes (and 1 minute after boot)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

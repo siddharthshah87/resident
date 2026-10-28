@@ -1,0 +1,20 @@
+[Unit]
+Description=resident first boot: seed the intent log with the reason for every package, service and config file
+Documentation=file:/usr/lib/resident/intents.json
+ConditionPathExists=!/var/lib/resident/intents.db
+After=dbus.service systemd-tmpfiles-setup.service systemd-logind.service getty.target
+Wants=dbus.service
+
+[Service]
+# Type=simple so the unit does not block startup: the seeder waits for the boot to complete
+# (systemctl is-system-running --wait), then explains what is actually running.
+Type=simple
+Group=agent
+UMask=0002
+Environment=RESIDENT_HOME=/var/lib/resident RESIDENT_AUTHOR=image
+ExecStart=/usr/bin/python3 -I /usr/lib/resident/seed-intents.py /usr/lib/resident/intents.json
+# the drift baseline is taken after this unit has left the 'running' state, so first boot itself is not drift
+ExecStopPost=/usr/bin/resident snapshot
+
+[Install]
+WantedBy=multi-user.target

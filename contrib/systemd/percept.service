@@ -1,0 +1,14 @@
+[Unit]
+Description=percept: perception daemon (active window, idle state, system events) for the resident agent
+Documentation=file://%h/resident/percept/README.md
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/resident/percept/percept.py run
+Restart=always
+RestartSec=5
+Nice=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

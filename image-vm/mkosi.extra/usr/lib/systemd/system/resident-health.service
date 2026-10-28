@@ -1,0 +1,19 @@
+[Unit]
+Description=resident: boot health check (gates boot-complete.target → systemd-bless-boot)
+Documentation=man:systemd-bless-boot.service(8) file:///usr/share/doc/resident/README.md
+# Only meaningful on a counted boot (UKI named ...+N-M.efi); on a blessed boot the unit is skipped.
+ConditionPathExists=/sys/firmware/efi/efivars/LoaderBootCountPath-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+ConditionKernelCommandLine=!resident.nohealth
+After=multi-user.target dbus.service polkit.service ssh.service resident-firstboot.service
+Before=boot-complete.target
+# Unhealthy slot: reboot now; systemd-boot decrements the tries counter and after 3 failed boots
+# selects the other (last blessed) slot. Boot assessment, not a manual rollback.
+FailureAction=reboot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/resident/health.sh
+TimeoutStartSec=5min
+
+[Install]
+RequiredBy=boot-complete.target

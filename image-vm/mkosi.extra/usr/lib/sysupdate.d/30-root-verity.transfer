@@ -1,0 +1,18 @@
+# A/B update, part 3: the verity hash partition for that root.
+[Transfer]
+ProtectVersion=%A
+Verify=no
+
+[Source]
+Type=regular-file
+Path=/var/lib/resident/updates
+MatchPattern=resident_@v_@u.root-x86-64-verity.raw
+
+[Target]
+Type=partition
+Path=auto
+MatchPattern=resident_@v_verity
+MatchPartitionType=root-verity
+PartitionFlags=0
+ReadOnly=1
+InstancesMax=2

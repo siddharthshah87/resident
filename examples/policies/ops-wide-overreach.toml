@@ -1,0 +1,16 @@
+# deliberately over-reaching: asks to restart ANY container
+[individual]
+name = "ops-wide"
+purpose = "test: a child that asks for more than its parent holds"
+
+[capabilities]
+"container.restart" = ["*"]
+
+[approval_required]
+verbs = ["container.restart", "unit.restart"]
+
+[budget]
+usd_per_day = 1.0
+memory_mb = 256
+cpus = 0.25
+max_children = 0

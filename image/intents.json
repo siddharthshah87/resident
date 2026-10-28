@@ -1,0 +1,138 @@
+[
+  {
+    "text": "resident firstboot: seed the intent log from /usr/lib/resident/intents.json so every package, service and config file in the image has a recorded reason (resident-firstboot.service, runs once)",
+    "adopt": [
+      "^resident-firstboot"
+    ]
+  },
+  {
+    "text": "resident world model: resident-world.timer regenerates /var/lib/resident/machine.md every 10 min (1 min after boot), records drift under intent #0 and drops events in /var/lib/resident/inbox/ for the resident agent",
+    "adopt": [
+      "^resident-world"
+    ],
+    "verify": "systemctl is-active --quiet resident-world.timer"
+  },
+  {
+    "text": "resident runtime: python3 + the resident CLI at /usr/lib/resident (symlinked as /usr/bin/{resident,intent,why}); RESIDENT_HOME=/var/lib/resident is set system-wide in /etc/environment",
+    "adopt": [
+      "^python3",
+      "^libpython3",
+      "^/etc/environment$",
+      "^/etc/python3"
+    ]
+  },
+  {
+    "text": "Resident agent identity: system user and group 'agent' (no password, nologin) owns /var/lib/resident; the observer units run as root (they must read all of /etc) with Group=agent so the state is shared with agentd/percept, which will run as this principal",
+    "adopt": [
+      "^/etc/(passwd|group|shadow|gshadow|subuid|subgid)$"
+    ],
+    "kind": "etc"
+  },
+  {
+    "text": "Machine identity: /etc/machine-id is written at boot by resident-init from the persistent copy in /var/lib/dbus/machine-id (/etc is a tmpfs; identity lives in /var, never in the image)",
+    "adopt": [
+      "^/etc/machine-id$"
+    ],
+    "kind": "etc"
+  },
+  {
+    "text": "Container network identity: /etc/hostname, /etc/hosts and /etc/resolv.conf are bind-mounted by the container runtime (the VM image will use systemd-networkd + systemd-resolved instead)",
+    "adopt": [
+      "^/etc/(hostname|hosts|resolv\\.conf)$"
+    ],
+    "kind": "etc"
+  },
+  {
+    "text": "Boot and service management: systemd as PID 1 (systemd, systemd-sysv), D-Bus system bus (dbus), journald, logind and the D-Bus-activated helpers (systemd-hostnamed/timedated/localed, woken by hostnamectl etc.); stock config under /etc/systemd and /etc/dbus-1",
+    "adopt": [
+      "^(systemd|dbus|libsystemd|libdbus)",
+      "^/etc/systemd/",
+      "^/etc/dbus-1/",
+      "^/etc/init\\.d/",
+      "^/etc/default/",
+      "^/etc/rc[0-6S]\\.d/"
+    ],
+    "pre": "hostnamectl --static >/dev/null 2>&1; timedatectl show >/dev/null 2>&1"
+  },
+  {
+    "text": "Console login on /dev/console: console-getty is systemd's default in containers (there are no ttys); harmless, will be replaced by the agent's own session in the VM image",
+    "adopt": [
+      "^console-getty",
+      "^getty"
+    ],
+    "kind": "service"
+  },
+  {
+    "text": "TLS roots for outbound HTTPS from curl and python (ca-certificates; bundle at /etc/ssl/certs/ca-certificates.crt, openssl defaults in /etc/ssl)",
+    "adopt": [
+      "^ca-certificates",
+      "^/etc/ca-certificates",
+      "^/etc/ssl/"
+    ]
+  },
+  {
+    "text": "Network inspection: iproute2 (ss, ip) — the resident port collector shells out to ss",
+    "adopt": [
+      "^iproute2",
+      "^/etc/iproute2/"
+    ]
+  },
+  {
+    "text": "Process and memory inspection: procps (ps, free, uptime, sysctl) — used by the world model header",
+    "adopt": [
+      "^procps",
+      "^/etc/sysctl"
+    ]
+  },
+  {
+    "text": "HTTP client for agents and intent --verify checks: curl",
+    "adopt": [
+      "^curl$",
+      "^libcurl"
+    ]
+  },
+  {
+    "text": "JSON tooling for shell pipelines and inbox/outbox events: jq",
+    "adopt": [
+      "^jq$",
+      "^libjq",
+      "^libonig"
+    ]
+  },
+  {
+    "text": "Pager for journalctl/systemctl output: less",
+    "adopt": [
+      "^less$"
+    ]
+  },
+  {
+    "text": "Periodic ext4 metadata scrub shipped by e2fsprogs (/etc/cron.d/e2scrub_all, /etc/e2scrub.conf); inert here because no cron daemon is installed and the root is read-only",
+    "adopt": [
+      "^cron\\.d/e2scrub_all$",
+      "^/etc/cron\\.d/",
+      "^/etc/e2scrub"
+    ]
+  },
+  {
+    "text": "Debian base system (essential + priority required/important): the minimal bookworm rootfs resident is built on; apt and dpkg are present but the root is read-only, so changes go through a new image, not apt-get",
+    "adopt_dpkg_priority": [
+      "required",
+      "important"
+    ],
+    "kind": "package"
+  },
+  {
+    "text": "Dependencies auto-installed for the packages above (apt-mark showauto); see image/Dockerfile",
+    "adopt": [
+      "."
+    ],
+    "kind": "package"
+  },
+  {
+    "text": "Debian base configuration as shipped by the image's packages: /etc is an empty tmpfs at boot, populated from /usr/share/factory/etc by resident-init (config is a cache; the intent log is the truth)",
+    "adopt": [
+      "^/etc/"
+    ],
+    "kind": "etc"
+  }
+]

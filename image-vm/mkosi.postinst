@@ -1,0 +1,28 @@
+#!/bin/bash
+# mkosi post-installation hook. Runs on the host with the image root at $BUILDROOT (mkosi >= 24;
+# in v20 it ran inside the chroot — then export BUILDROOT=/ first).
+# Everything here is a build-time fact about an immutable root; runtime state goes to /var.
+set -euo pipefail
+R="${BUILDROOT:?BUILDROOT must point at the image root}"
+[ -f "$R/usr/lib/os-release" ] || { echo "not an image root: $R" >&2; exit 1; }
+
+# /home, /srv, /opt live on /var (root is read-only). tmpfiles creates /var/{home,srv,opt} at boot.
+for d in home srv opt; do
+    if [ -d "${R:?}/${d:?}" ] && [ ! -L "${R:?}/${d:?}" ]; then
+        rmdir "${R:?}/${d:?}"      # refuses if non-empty: a populated /home in the image is a build error
+    fi
+    ln -sfn "var/$d" "${R:?}/${d:?}"
+done
+
+# resolv.conf → systemd-resolved stub (the symlink itself is on the ro root, the target in /run).
+ln -sfn ../run/systemd/resolve/stub-resolv.conf "$R/etc/resolv.conf"
+
+# Lock root; the only human path in is ssh key → owner → sudo (README "break-glass").
+sed -i 's|^root:[^:]*:|root:!:|' "$R/etc/shadow" || true
+
+# machine-id is assigned on first boot and persisted into the /etc overlay (etc-overlay.sh).
+: > "$R/etc/machine-id"
+
+# Record the policy hash so `why /etc/resident/policy.toml` has a fixed answer per image.
+mkdir -p "$R/usr/share/resident"
+sha256sum "$R/etc/resident/policy.toml" | cut -c1-16 > "$R/usr/share/resident/policy.sha256"

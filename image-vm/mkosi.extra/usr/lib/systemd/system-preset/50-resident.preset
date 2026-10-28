@@ -1,0 +1,16 @@
+# What boots by default. Each enablement has an intent in /usr/share/resident/intents.json.
+enable resident-etc-overlay.service
+enable resident-firstboot.service
+enable resident-world.timer
+enable resident-health.service
+enable agentd.service
+enable percept.service
+enable agent-browser.service
+enable ssh.service
+enable systemd-networkd.service
+enable systemd-resolved.service
+enable systemd-timesyncd.service
+enable systemd-repart.service
+# NOT enabled: systemd-sysupdate.timer — updates are a human-approved action (update.sh / policy.toml).
+disable systemd-sysupdate.timer
+disable systemd-sysupdate-reboot.timer

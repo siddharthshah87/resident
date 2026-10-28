@@ -1,0 +1,13 @@
+[Unit]
+Description=resident world model: regenerate machine.md, record drift, emit inbox events
+Documentation=file:/usr/lib/resident/agentos.py
+After=dbus.service resident-firstboot.service
+
+[Service]
+Type=oneshot
+# root: the observer must hash all of /etc (shadow etc.); results are group-writable for the agent principal
+Group=agent
+UMask=0002
+Environment=RESIDENT_HOME=/var/lib/resident
+ExecStart=/usr/bin/resident world
+StandardOutput=null

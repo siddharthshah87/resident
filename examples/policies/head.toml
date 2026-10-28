@@ -1,0 +1,21 @@
+# Head agent for this machine. Everything below this line is what the owner has granted the box;
+# every child's policy must fit inside it.
+[individual]
+name = "head"
+purpose = "Head agent of this machine: owns the box, raises children, answers to its owner"
+
+[capabilities]
+spawn = true
+"container.inspect" = ["*"]
+"container.restart" = ["shop-app-*", "ops-*", "research-*"]
+"unit.restart" = ["agentd.service", "percept.service", "agent-browser.service", "research-server.service"]
+"browser.visit" = ["*"]
+
+[approval_required]
+verbs = ["container.restart", "unit.restart"]   # restarts always need a human, at every level
+
+[budget]
+usd_per_day = 20.0
+memory_mb = 4096
+cpus = 4.0
+max_children = 8

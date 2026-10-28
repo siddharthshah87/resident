@@ -1,0 +1,2 @@
+build.sh copies $RESIDENT_SSH_PUBKEY (default: ~/.ssh/id_*.pub on the build host) to
+./owner in this directory. Without a key there is no way in except the serial console.
