@@ -1,0 +1,133 @@
+name: image-rpi4
+
+# arm64 / Raspberry Pi 4 variant of image.yml: `./build.sh --profile=rpi4` on GitHub's arm64 runner, then a boot
+# test of that same disk image on qemu -M virt with AAVMF (UEFI). The Pi firmware files on the ESP are ignored by
+# AAVMF, so this checks the arm64 kernel, UKI, verity root, A/B layout and first boot, not the Pi boot chain.
+on:
+  push:
+    branches: [main]
+    paths: [image-vm/**, lib/**, agentd/**, percept/**, browser/**, .github/workflows/image-rpi4.yml]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # only used to attach images to a release on v* tags
+
+env:
+  # same mkosi commit as image.yml
+  MKOSI_REF: 78362ba193cac046a0351c7d33af86bbd0e9cfc6
+
+jobs:
+  build-and-boot-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Install build and boot tools
+        run: |
+          sudo apt-get update
+          # as image.yml (mkosi's tools tree needs Debian's archive keyring), with the arm64 qemu + AAVMF firmware
+          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-efi-aarch64 zstd pipx unzip mtools debian-archive-keyring mkosi systemd-boot systemd-ukify erofs-utils
+          # GitHub's runners point pipx at /opt/pipx_bin; install where the build step looks
+          PIPX_BIN_DIR="$HOME/.local/bin" PIPX_HOME="$HOME/.local/pipx" pipx install "git+https://github.com/systemd/mkosi.git@${MKOSI_REF}"
+          "$HOME/.local/bin/mkosi" --version
+          ls -la /usr/share/AAVMF/
+
+      - name: Stage the Raspberry Pi 4 firmware (pinned pftf release, checksum-verified)
+        working-directory: image-vm
+        run: ./stage-rpi4-firmware.sh
+
+      - name: Build the rpi4 disk image (public variant, no bundled Claude Code runtime)
+        working-directory: image-vm
+        run: |
+          VERSION="$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
+          case "$GITHUB_REF" in refs/tags/v*) VERSION="${GITHUB_REF_NAME#v}" ;; esac
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sudo env "PATH=$HOME/.local/bin:$PATH" RESIDENT_VERSION="$VERSION" ./build.sh -f --profile=rpi4
+          sudo chown -R "$(id -u):$(id -g)" out
+          ls -la out out/updates
+          # the Pi boot ROM reads partition 1: it must be the FAT ESP carrying the firmware and systemd-boot
+          sfdisk -J "out/resident_${VERSION}.raw" | python3 -c 'import json,sys; p=json.load(sys.stdin)["partitiontable"]["partitions"][0]; print(p); assert p["type"].upper()=="C12A7328-F81F-11D2-BA4B-00A0C93EC93B", "partition 1 is not the ESP"'
+          # ...and the files the Pi boot ROM, pftf and AAVMF look for must sit at the ESP root (mtools: FAT is case-insensitive)
+          ESP="out/resident_${VERSION}.esp.raw"
+          for f in start4.elf fixup4.dat config.txt RPI_EFI.fd bcm2711-rpi-4-b.dtb overlays/miniuart-bt.dtbo overlays/upstream-pi4.dtbo \
+                   LICENCE.broadcom EFI/BOOT/BOOTAA64.EFI loader/loader.conf; do
+            mdir -b -i "$ESP" "::/$f" >/dev/null || { echo "ESP lacks $f"; exit 1; }
+          done
+          mdir -i "$ESP" ::/ && mdir -i "$ESP" ::/EFI/Linux
+
+      - name: Boot it in QEMU (arm64 virt + AAVMF) and require a healthy, fully explained first boot
+        run: |
+          set -e
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+            sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+            ACCEL="-enable-kvm -cpu host"; echo "using KVM"
+          else
+            ACCEL="-accel tcg,thread=multi -cpu max,pauth-impdef=on"; echo "no /dev/kvm: TCG (slow)"
+          fi
+          IMG="image-vm/out/resident_${VERSION}.raw"
+          cp --sparse=always "$IMG" run.raw && truncate -s 16G run.raw
+          CODE=/usr/share/AAVMF/AAVMF_CODE.fd
+          [ -f /usr/share/AAVMF/AAVMF_CODE.no-secboot.fd ] && CODE=/usr/share/AAVMF/AAVMF_CODE.no-secboot.fd
+          cp /usr/share/AAVMF/AAVMF_VARS.fd vars.fd
+          qemu-system-aarch64 -M virt,gic-version=max $ACCEL -smp 4 -m 4G \
+            -drive if=pflash,format=raw,readonly=on,file="$CODE" -drive if=pflash,format=raw,file=vars.fd \
+            -drive file=run.raw,format=raw,if=none,id=hd0 -device virtio-blk-pci,drive=hd0 \
+            -device virtio-rng-pci -nic user,model=virtio-net-pci \
+            -smbios 'type=11,value=io.systemd.stub.kernel-cmdline-extra=console=ttyAMA0 systemd.journald.forward_to_console=1' \
+            -display none -serial file:serial.log -daemonize -pidfile qemu.pid
+          # TCG is slow: allow ~25 min for the first boot
+          for i in $(seq 1 500); do
+            grep -qaE 'resident-health: (healthy|UNHEALTHY)|emergency mode|Kernel panic' serial.log && break
+            sleep 3
+          done
+          tr -d '\r' < serial.log | grep -aE 'resident-health|\[FAILED\]|UNEXPLAINED|emergency' | head -40 || true
+          kill "$(cat qemu.pid)" || true
+          grep -qa 'resident-health: healthy' serial.log || { tr -d '\r' < serial.log | tail -80; exit 1; }
+          grep -qaE 'resident-health: UNEXPLAINED STATE: 0/' serial.log
+
+      - name: Compress and checksum
+        run: |
+          cd image-vm/out
+          # .img.zst: Raspberry Pi Imager's "Use custom" lists .img/.zst; the content is the same raw GPT disk as image.yml's
+          zstd -T0 -10 --sparse -q "resident_${VERSION}.raw" -o "resident-rpi4_${VERSION}.img.zst"
+          # sysupdate artifacts keep their names (resident_<ver>.efi, *.root-arm64*.raw) inside one tar, so they
+          # can't collide with the x86 release assets
+          mkdir -p upd-zst && for f in updates/*; do zstd -T0 -10 -q "$f" -o "upd-zst/$(basename "$f").zst"; done
+          tar -C upd-zst -cf "resident-rpi4_${VERSION}.updates.tar" .
+          sha256sum "resident-rpi4_${VERSION}.img.zst" "resident-rpi4_${VERSION}.updates.tar" > SHA256SUMS-rpi4
+          cat SHA256SUMS-rpi4
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resident-rpi4-${{ env.VERSION }}
+          path: |
+            image-vm/out/resident-rpi4_*.img.zst
+            image-vm/out/resident-rpi4_*.updates.tar
+            image-vm/out/SHA256SUMS-rpi4
+            serial.log
+          retention-days: 7
+
+      - name: Attach to the v* release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # image.yml creates the release (`gh release create` fails if it already exists), so wait for it
+          for i in $(seq 1 90); do gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break; sleep 30; done
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" \
+            --title "Resident Linux $VERSION" \
+            --notes "Built and boot-tested by CI. The Claude Code runtime is not bundled: you download it on your own machine."
+          gh release upload --clobber "$GITHUB_REF_NAME" image-vm/out/resident-rpi4_*.img.zst image-vm/out/resident-rpi4_*.updates.tar image-vm/out/SHA256SUMS-rpi4
+          BODY=$(gh release view "$GITHUB_REF_NAME" --json body -q .body)
+          case "$BODY" in *"Raspberry Pi 4 (arm64)"*) exit 0 ;; esac
+          gh release edit "$GITHUB_REF_NAME" --notes "$BODY
+
+          **Raspberry Pi 4 (arm64):** resident-rpi4_${VERSION}.img.zst (+ SHA256SUMS-rpi4). Built by CI and boot-tested on qemu arm64 virt; boot on real Pi 4 hardware not yet verified. See image-vm/README.md \"Raspberry Pi 4\" for the one-time EEPROM and UEFI steps."

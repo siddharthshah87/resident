@@ -5,7 +5,7 @@
  "intents": [
   {"key": "boot", "text": "Boot a sealed image: systemd-boot + UKI, dm-verity read-only erofs root, A/B root slots, writable /var only (mkosi.repart/, loader.conf editor=no)",
    "verify": "findmnt -n -o FSTYPE / | grep -q erofs && test -d /sys/firmware/efi",
-   "adopt": [{"kind": "package", "patterns": ["^systemd-boot", "^systemd-ukify$", "^linux-image", "^intel-microcode$", "^firmware-iwlwifi$", "^udev$", "^kmod$"]},
+   "adopt": [{"kind": "package", "patterns": ["^systemd-boot", "^systemd-ukify$", "^linux-image", "^intel-microcode$", "^firmware-iwlwifi$", "^firmware-brcm80211$", "^bluez-firmware$", "^udev$", "^kmod$"]},
              {"kind": "etc", "patterns": ["^/etc/fstab$"]}]},
   {"key": "etc-overlay", "text": "Keep /etc persistently writable on a verity root via overlayfs upper on /var (resident-etc-overlay.service); image /etc is the factory state",
    "verify": "findmnt -t overlay /etc",

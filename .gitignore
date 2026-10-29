@@ -31,3 +31,4 @@ image-vm/*.log
 __pycache__/
 *.pyc
 image-vm/mkosi.extra/usr/lib/resident/wheels/
+image-vm/mkosi.profiles/rpi4/mkosi.extra/

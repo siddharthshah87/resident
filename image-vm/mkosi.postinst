@@ -20,6 +20,13 @@ for d in home srv opt; do
     ln -sfn "var/$d" "${R:?}/${d:?}"
 done
 
+# sysupdate source names carry the GPT root type: root-x86-64 in the shipped transfers; arm64 (rpi4) → root-arm64.
+case "${ARCHITECTURE:-x86-64}" in
+    x86-64) ;;
+    arm64) sed -i 's/\.root-x86-64\(-verity\)\?\.raw$/.root-arm64\1.raw/' "$R"/usr/lib/sysupdate.d/*.transfer ;;
+    *) echo "mkosi.postinst: no sysupdate naming for architecture $ARCHITECTURE" >&2; exit 1 ;;
+esac
+
 # resolv.conf → systemd-resolved stub (the symlink itself is on the ro root, the target in /run).
 ln -sfn ../run/systemd/resolve/stub-resolv.conf "$R/etc/resolv.conf"
 

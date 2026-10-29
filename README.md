@@ -86,10 +86,29 @@ assistant-as-its-own-user and A/B update rollback are written but not yet exerci
 | `percept/` | consented activity awareness: active window title, idle/lock state, system events (X11/GNOME) |
 | `browser/` | headless Chromium as a service: `resident-browse <url>`, visits logged, MCP server |
 | `image/` | container image: Debian, read-only root, `/etc` rebuilt from factory, every part explained at first boot |
-| `image-vm/` | bootable image recipe (mkosi): UKI + systemd-boot, dm-verity A/B roots, sysupdate, the agent as a polkit principal. **Not yet booted.** |
+| `image-vm/` | bootable image recipe (mkosi): UKI + systemd-boot, dm-verity A/B roots, sysupdate, the agent as a polkit principal. x86-64, plus a Raspberry Pi 4 (arm64) variant |
 | `examples/policies/` | a head and three children, including one that over-reaches on purpose |
 | `contrib/systemd/` | user units for the timer, broker, agentd, percept and browser |
 | `stage1/` | the A/B harness and report |
+
+## Raspberry Pi 4
+
+> **Status: built by CI; boot on real Pi 4 hardware not yet verified.** CI builds the arm64 image on GitHub's arm64 runner
+> and boots it in QEMU (arm64 `virt`, UEFI). Details: [image-vm/README.md](image-vm/README.md#raspberry-pi-4-model-b---profilerpi4).
+
+The `rpi4` variant is the same sealed image (verified read-only root, A/B slots, one unified boot image). It boots through the
+community [Pi 4 UEFI firmware](https://github.com/pftf/RPi4) (pinned v1.53) and then systemd-boot, as on a PC.
+
+1. **Bootloader EEPROM from 2020-09 or later**, which GPT disks need. From Raspberry Pi OS: `sudo rpi-eeprom-update -a`.
+   Or use Raspberry Pi Imager → *Misc utility images* → *Bootloader (Pi 4 family)*. Pick *USB Boot* if you'll run from a USB SSD.
+2. **Flash** `resident-rpi4_<ver>.img.zst` from the [releases](https://github.com/siddharthshah87/resident/releases) (16 GB or more):
+   Imager → *Use custom*, or `zstd -dc resident-rpi4_<ver>.img.zst | sudo dd of=/dev/sdX bs=4M conv=fsync`.
+3. **First boot, once:** press Esc at the Raspberry Pi logo → *Device Manager → Raspberry Pi Configuration → Advanced
+   Configuration*. Set *Limit RAM to 3 GB* to Disabled and *System Table Selection* to DeviceTree, then press F10 to save.
+4. Serial console (optional): GPIO 14/15 (pins 8/10, GND pin 6), 115200 baud, `/dev/ttyAMA0`.
+
+The Pi firmware on the boot partition is Raspberry Pi/Broadcom's redistributable boot firmware and pftf's EDK2 build
+(BSD-2-Clause-Patent). Its licence files ship next to it.
 
 ## Quick start: the host layer (Debian/Ubuntu, no root)
 

@@ -16,13 +16,15 @@ pipx install git+https://github.com/systemd/mkosi.git     # apt's mkosi is 20.2;
 cd ~/resident/image-vm && ./build.sh && ./boot.sh            # serial console; ssh -p 2222 owner@localhost
 ```
 Variants: `./build.sh --profile=desktop` (cage + portals, see docs/portal-consent.md),
-`--profile=docker` (docker.io), or both `--profile=desktop,docker`.
+`--profile=docker` (docker.io), or both `--profile=desktop,docker`. Raspberry Pi 4 (arm64):
+`./stage-rpi4-firmware.sh && ./build.sh --profile=rpi4` on an arm64 host (see "Raspberry Pi 4" below).
 Update a running box: `./update.sh owner@<host> <version>`.
 
 ## Layout
 ```
 mkosi.conf                 Debian trixie, systemd-boot, UKI, packages (every group has an intent)
-mkosi.profiles/{desktop,docker}/   optional variants
+mkosi.conf.d/              per-architecture kernel/firmware/console (10-x86-64, 10-arm64); 00-rpi4-arch selects arm64
+mkosi.profiles/{desktop,docker,rpi4}/   optional variants (rpi4: Pi 4 firmware on the ESP, arm64)
 mkosi.repart/              install-image GPT: ESP · root-A (erofs+verity) · root-A-verity · root-B (_empty) · root-B-verity · var
 mkosi.postinst             /home,/srv,/opt → /var; lock root; resolv.conf; policy hash
 mkosi.extra/               files copied into the image root:
@@ -74,7 +76,8 @@ See `docs/portal-consent.md`: one human grant via xdg-desktop-portal ScreenCast 
 restore token in `/var/lib/resident/consent/`, kill switch `percept off` or `consent-revoke.sh`.
 
 ## Update / rollback
-1. `./build.sh` → `out/updates/resident_<ver>.efi`, `resident_<ver>_<partuuid>.root-x86-64{,-verity}.raw`, `SHA256SUMS`.
+1. `./build.sh` → `out/updates/resident_<ver>.efi`, `resident_<ver>_<partuuid>.root-<arch>{,-verity}.raw`, `SHA256SUMS`
+   (`<arch>` = `x86-64`, or `arm64` for rpi4; `mkosi.postinst` rewrites the shipped transfers' `root-x86-64` for arm64).
 2. `./update.sh host ver` stages into `/var/lib/resident/updates`, runs `systemd-sysupdate update`: UKI
    installed as `resident_<ver>+3.efi`, root+verity written into the `_empty` (or oldest) slot; the
    running version is `ProtectVersion=%A`.
@@ -85,6 +88,70 @@ restore token in `/var/lib/resident/consent/`, kill switch `percept off` or `con
    falls back to the previous (blessed) UKI and slot. `/var` (state) is shared across slots; `/etc`
    edits persist across updates (and may shadow new defaults — the intent log says which).
 Manual: `bootctl set-oneshot <entry>`; `systemd-sysupdate vacuum` frees old slots.
+
+## Raspberry Pi 4 Model B (`--profile=rpi4`)
+> **Status: built by CI; boot on real Pi 4 hardware not yet verified.** CI (`.github/workflows/image-rpi4.yml`,
+> GitHub's `ubuntu-24.04-arm` runner) builds the image and boots that same disk on `qemu-system-aarch64 -M virt`
+> with AAVMF UEFI, requiring `resident-health: healthy` and `UNEXPLAINED STATE: 0/`. That proves the arm64 kernel,
+> UKI, verity root and first boot, not the Pi boot ROM → pftf → systemd-boot hand-off.
+
+Boot chain, the same as x86 after the firmware: Pi boot ROM/EEPROM → **partition 1** (our ESP, FAT, `mkosi.repart/00-esp.conf`)
+→ `start4.elf` + `config.txt` → `armstub=RPI_EFI.fd` ([pftf/RPi4](https://github.com/pftf/RPi4) UEFI, EDK2) →
+`EFI/BOOT/BOOTAA64.EFI` (systemd-boot, installed by mkosi) → `EFI/Linux/resident_<ver>+3.efi` (UKI) → gpt-auto picks the
+erofs + dm-verity root from `roothash=`. A/B slots, `/var`, `/etc` overlay and sysupdate are unchanged.
+
+How the variant is put together:
+- `mkosi.conf.d/00-rpi4-arch.conf` sets `Architecture=arm64` when the profile is selected. mkosi parses `mkosi.profiles/`
+  *after* `mkosi.conf.d/`, so setting it only in the profile would be too late for the `[Match] Architecture=` drop-ins.
+  `10-x86-64.conf` (linux-image-amd64, intel-microcode, firmware-iwlwifi, `console=ttyS0`) and `10-arm64.conf`
+  (linux-image-arm64, which carries the bcm2711 device trees; `console=ttyAMA0,115200`) are each selected by architecture.
+  The default build is unchanged: `mkosi summary` before and after differs only in the random seed.
+- `mkosi.profiles/rpi4/mkosi.conf` adds firmware-brcm80211 (Wi-Fi, including `brcmfmac43455-sdio.raspberrypi,4-model-b.txt`)
+  and bluez-firmware (Bluetooth `BCM4345C0.hcd`). `Packages=` and `KernelCommandLine=` *append* across files; an empty
+  assignment would reset them.
+- `./stage-rpi4-firmware.sh` downloads pftf **v1.53** (zip sha256 `ca9973e2a7a546b3df871cfb7382e656829114b6dfa424f40dc67cc90a217d88`,
+  checked) and Broadcom's `LICENCE.broadcom` (pinned to raspberrypi/firmware tag 1.20260915, checked) into
+  `mkosi.profiles/rpi4/mkosi.extra/efi/`. mkosi copies that to `/efi` in the build root, and `00-esp.conf`'s `CopyFiles=/efi:/`
+  puts it at the **ESP root**: `start4.elf fixup4.dat config.txt RPI_EFI.fd bcm2711-rpi-4-b.dtb bcm2711-rpi-400.dtb
+  bcm2711-rpi-cm4.dtb overlays/{miniuart-bt,upstream-pi4}.dtbo firmware/ Readme.md LICENCE.broadcom`. The root partition
+  excludes `/efi/`. The staged tree is not in git.
+- Licences (from the zip's own Readme.md and licence files): `RPI_EFI.fd` is EDK2, **BSD-2-Clause-Patent**. `start4.elf`,
+  `fixup4.dat` and the `.dtb`/`.dtbo` files are Raspberry Pi boot files under **Broadcom's redistributable licence** (binary-only,
+  unmodified, for use with Raspberry Pi devices; `LICENCE.broadcom` ships next to them on the ESP). `firmware/brcm/*`
+  (pftf's Wi-Fi blobs; Debian's own firmware-brcm80211 is what the OS uses) is under the **Cypress** licence in `firmware/LICENCE.txt`.
+
+### One-time steps on the Pi
+1. **EEPROM bootloader 2020-09-03 or newer.** GPT disks and USB boot need it; any Pi 4 updated since late 2020 has it. Check it
+   from Raspberry Pi OS with `sudo rpi-eeprom-update`, and update with `sudo rpi-eeprom-update -a && sudo reboot`. Without Pi OS:
+   Raspberry Pi Imager → *Choose OS* → *Misc utility images* → *Bootloader (Pi 4 family)* → *SD Card Boot* or *USB Boot*.
+   Write that to a spare SD card, boot the Pi from it once (when it finishes, the screen turns green and the activity LED blinks steadily), then power off.
+2. **Flash the image.** Use `resident-rpi4_<ver>.img.zst` from the release (verify it with `SHA256SUMS-rpi4`).
+   - Raspberry Pi Imager: *Choose OS* → *Use custom* → the `.img.zst` file. Skip Imager's "OS customisation"; it doesn't apply here.
+   - Or: `zstd -dc resident-rpi4_<ver>.img.zst | sudo dd of=/dev/sdX bs=4M conv=fsync status=progress`.
+   The disk needs **≥ 16 GB**. The layout is 512 MB ESP + 2×(3 GB root + 64 MB verity) + 4 GB `/var`, and `/var` grows to
+   fill the disk on first boot.
+3. **SD card vs USB SSD.** An SD card works with the factory boot order. A USB SSD is faster and wears better, but the
+   EEPROM must try USB: choose Imager's *USB Boot* bootloader image in step 1, or set it from Pi OS with
+   `sudo rpi-eeprom-config --edit` and `BOOT_ORDER=0xf14` (read right to left: USB, then SD, then retry). Use a powered hub or an SSD that
+   draws little power.
+4. **UEFI settings.** On the first boot, press **Esc** at the Raspberry Pi logo, then go to *Device Manager → Raspberry Pi
+   Configuration → Advanced Configuration*:
+   - *Limit RAM to 3 GB*: **Disabled**. pftf enforces 3 GB by default because of a DMA bug in the SoC; Debian's 6.x kernel
+     handles it.
+   - *System Table Selection*: **DeviceTree**. pftf defaults to ACPI. Ethernet, USB and SD do work under ACPI, so the image
+     should come up either way. DeviceTree, with pftf's `upstream-pi4` overlay, gives Debian's kernel the full set of Pi 4
+     peripherals (Wi-Fi, Bluetooth, GPIO, thermal, HDMI audio).
+   - *F10* saves. pftf writes these settings back into `RPI_EFI.fd` on the ESP, so they survive reboots and image updates
+     (sysupdate touches only `EFI/Linux/`). The settings can't be set in advance: they live in the firmware's own variable
+     store, not in `config.txt`. Re-flashing resets them.
+5. **Serial console** (optional): 3.3 V USB-UART on GPIO 14 (TXD, pin 8), GPIO 15 (RXD, pin 10) and GND (pin 6), at
+   115200 8N1. pftf's `config.txt` sets `enable_uart=1` + `dtoverlay=miniuart-bt`, so this is the PL011 (`/dev/ttyAMA0`),
+   which is what the kernel command line uses. HDMI is `tty0`, the primary console.
+
+Known risks (unverified on hardware): the arm64 UKI carries every kernel module (as on x86, where it's 169 MB). Two of them
+plus the firmware have to fit in the 512 MB ESP for an A/B update. The DTB is pftf's (Raspberry Pi Foundation's) plus its
+`upstream-pi4` overlay, not Debian's own `broadcom/bcm2711-rpi-4-b.dtb`. If a peripheral misbehaves in DeviceTree mode,
+try Debian's DTB (from `/usr/lib/linux-image-*/broadcom/`) on the ESP first.
 
 ## Known gaps (honest list)
 - **mkosi version:** keys are v25 (`[Build] ToolsTree`, `[Runtime]`, `SplitArtifacts=uki,partitions`,

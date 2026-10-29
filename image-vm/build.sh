@@ -7,7 +7,8 @@
 #   pipx install git+https://github.com/systemd/mkosi.git   # apt's mkosi 20.2 predates [Build]/[Runtime]/SplitArtifacts=uki,partitions; this config targets v25+
 #
 # Then:   ./build.sh [--profile=desktop[,docker]] [extra mkosi args]
-# Output: out/resident_<ver>.raw (disk), out/resident_<ver>.efi (UKI), out/*.root-x86-64*.raw (slot images)
+# Output: out/resident_<ver>.raw (disk), out/resident_<ver>.efi (UKI), out/*.root-<arch>*.raw (slot images;
+#         <arch> = x86-64 by default, arm64 with --profile=rpi4: run ./stage-rpi4-firmware.sh first)
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 RESIDENT_SRC=${RESIDENT_SRC:-$(readlink -f ..)}
@@ -21,6 +22,7 @@ command -v mkosi >/dev/null || { echo "mkosi not found (pipx install git+https:/
 # --- permissions: files from a home checkout are often group-writable (umask 002). In an OS image that is a
 # security bug, and sshd's StrictModes refuses keys under such directories. Normalise before every build.
 chmod -R go-w mkosi.extra
+for x in mkosi.profiles/*/mkosi.extra; do [ -d "$x" ] && chmod -R go-w "$x"; done
 
 # --- stage: copy the components that must ship in the image into mkosi.extra -------------------
 # (kept out of git-style tracking of this dir: they are copies of ../lib, ../agentd, ../percept, ../browser)
@@ -64,21 +66,26 @@ fi
 mkosi --image-version="$VERSION" "$@" build
 
 # --- stage update artifacts in the sysupdate naming scheme --------------------------------------
-# sysupdate wants resident_<ver>.efi, resident_<ver>_<partuuid>.root-x86-64.raw, ..._<partuuid>.root-x86-64-verity.raw
+# sysupdate wants resident_<ver>.efi, resident_<ver>_<partuuid>.root-<arch>.raw, ..._<partuuid>.root-<arch>-verity.raw
 OUT=out; UPD=out/updates; mkdir -p "$UPD"
 IMG=$(ls "$OUT"/resident_"$VERSION".raw 2>/dev/null || ls "$OUT"/resident*.raw | head -1)
 if command -v sfdisk >/dev/null && [ -f "$IMG" ]; then
     python3 - "$IMG" "$OUT" "$UPD" "$VERSION" <<'PY'
-import json, shutil, subprocess, sys, glob, os
+import json, shutil, subprocess, sys, glob, os, re
 img, out, upd, ver = sys.argv[1:]
 parts = json.loads(subprocess.check_output(["sfdisk", "-J", img]))["partitiontable"]["partitions"]
 by_type = {}
-ROOT = "4f68bce3-e8cd-4db1-96e7-fbcaf984b709"; VER = "2c7357ed-ebd2-46d9-aec1-23d437ec2bf5"
+# discoverable-partitions root / root-verity type GUIDs per architecture (the arch is read off mkosi's split files)
+TYPES = {"x86-64": ("4f68bce3-e8cd-4db1-96e7-fbcaf984b709", "2c7357ed-ebd2-46d9-aec1-23d437ec2bf5"),
+         "arm64":  ("b921b045-1df0-41c3-af44-4c6f280d3fae", "df3300ce-d69f-4c92-978c-9bfb0f38d820")}
+arch = next((m.group(1) for f in sorted(glob.glob(f"{out}/*.root-*.raw"))
+             if (m := re.search(r"\.root-(x86-64|arm64)(-verity)?\.raw$", f))), "x86-64")
+ROOT, VER = TYPES[arch]
 for p in parts:
     t = p["type"].lower(); name = p.get("name", "")
     if name.startswith("resident_"):
         by_type[t] = p["uuid"].lower()
-pairs = [("root-x86-64", ROOT), ("root-x86-64-verity", VER)]
+pairs = [(f"root-{arch}", ROOT), (f"root-{arch}-verity", VER)]
 for role, t in pairs:
     src = glob.glob(f"{out}/*.{role}.raw")
     if src and t in by_type:
