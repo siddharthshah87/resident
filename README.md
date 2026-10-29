@@ -2,33 +2,56 @@
 
 **Make your machine your own assistant.**
 
-Resident turns a Linux box into a home for an AI agent that you own. The agent lives on your hardware,
-remembers *why* every part of the machine is the way it is, changes things only through recorded and
-verified intents, and raises child agents in containers whose permissions are carved out of its own.
+Resident is a **Linux distribution**. You install it on a computer you own — a mini-PC, an old desktop,
+a Raspberry Pi — and that computer becomes a home for an AI assistant. You talk to it, give it tasks,
+and it does them on that machine.
 
-It started as a one-night experiment on a home server (an Intel NUC running Ubuntu 24.04) in October 2026,
-and it is measured: see [Stage 1](stage1/REPORT.md).
+> **Status: early prototype.** The bootable image is being built and tested now. Today the core runs
+> on an existing Debian or Ubuntu machine and as a container image (see [Quick start](#quick-start-the-host-layer-debianubuntu-no-root)).
 
-> **Status: early prototype.** It runs on one machine. Read [Safety](#safety) before trying it anywhere you care about.
+## In plain words
 
-## The idea
+- **It's your machine.** The assistant lives on hardware you own, not in a company's cloud. Your files,
+  apps and logins stay on it.
+- **You hold the keys.** Passwords, tokens and API keys are stored on the machine and sealed to it.
+  Nothing is shared unless you allow it.
+- **It just does the work.** Writing code, running its own apps, keeping backups, fixing what breaks —
+  it handles that without asking.
+- **It asks before anything that matters:** sending data off the machine, using one of your accounts,
+  spending money, deleting things, or doing something you haven't allowed before.
+- **Only your phone can say yes.** Approvals need a passkey on your phone. Agents can ask; they can't approve.
+- **You choose where copies go:** only this machine, your own GitHub, or your own cloud drive.
+- **It can always tell you why.** Every app, service and setting on the machine has a recorded reason.
+  Ask *"why is this running?"* and it answers — or tells you plainly that nothing explains it.
+
+## Why a distro, and not an app
+
+An app runs inside an operating system built for people. To be useful it ends up with the keys to
+everything, and nothing on the machine records what it did or why.
+
+Resident is the operating system itself, built for an assistant from the first boot:
+
+- the base system is **read-only**, so the assistant can't quietly change it;
+- every change is **recorded with a reason** and can be undone;
+- the assistant runs as **its own user**, with only the permissions you grant;
+- each helper it creates gets **its own sandbox**, with less access than the one that created it.
+
+You get the convenience of assistants like Meta's Muse, without handing your machine and your keys to someone else.
+
+## How it works
 
 - **Config is a cache; intent is the truth.** Every service, listening port, package, container, cron line
   and `/etc` file should have a recorded reason. `why 3000` answers *"intent #1: run the shop dashboard,
-  added by the owner on 2026-10-28"*, or says plainly that nothing explains it.
+  added by the owner on 2026-10-28"*.
 - **Change through intents, report outcomes.** `intent add "<goal>" --verify "<check>"`, then
   `intent apply <id> -- <command>`: the machine is fingerprinted before and after, every change is attributed
   to the intent, and what gets reported is whether the *goal* was met, not the exit code.
-- **A world model instead of probing.** `machine.md` (regenerated every 10 minutes, about 2k tokens) tells the
-  agent what's on the box, what's unexplained, what drifted and what failed, so it doesn't re-discover the
-  machine on every question.
+- **A world model instead of probing.** `machine.md`, regenerated every 10 minutes and about 2k tokens, tells
+  the assistant what's on the machine, what's unexplained, what drifted and what failed.
 - **An individual is a body plus its record of reasons.** Destroy the container *and* its volume, replay the
-  intent log onto a new body, and you get the same individual back: same answers to `why`, same verified
-  state, lineage recorded.
-- **A head agent raises children.** A child's policy must fit inside its parent's: capabilities, the list
-  of verbs that need a human, and budget. Children never get the Docker socket; they ask the broker for a
-  fixed set of verbs. Requests outside a child's policy escalate to a human. If nobody in the chain holds
-  the capability, the request is denied.
+  record onto a new body, and the same individual comes back.
+- **A head agent raises helpers.** A helper's permissions must fit inside its parent's. Requests outside a
+  helper's permissions go to you; if nobody above it holds the permission, the request is denied.
 
 ## What's here
 
