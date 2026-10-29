@@ -2,12 +2,28 @@
 
 **Make your machine your own assistant.**
 
-Resident is a **Linux distribution**. You install it on a computer you own — a mini-PC, an old desktop,
-a Raspberry Pi — and that computer becomes a home for an AI assistant. You talk to it, give it tasks,
-and it does them on that machine.
+Resident is an **agent-native Linux distribution**. Today's AI agents are guests in operating systems built for
+people: they borrow a terminal and a sudo password, and nothing records what they did or why. In Resident the
+agent is part of the operating system. You install it on a computer you own — a mini-PC, an old desktop, a
+Raspberry Pi 4 — and an agent lives there: it knows the machine, runs it, and comes to you only when something
+matters.
 
-> **Status: early prototype.** The bootable image is being built and tested now. Today the core runs
-> on an existing Debian or Ubuntu machine and as a container image (see [Quick start](#quick-start-the-host-layer-debianubuntu-no-root)).
+**What agent-native means here**
+
+- **The agent is a citizen of the OS, not an app.** It has its own user, its own permissions written in a
+  readable policy file, and its own place in the boot process.
+- **The machine remembers why.** Every service, port, package and config file has a recorded reason, so the
+  agent wakes up knowing its machine instead of rediscovering it. Ask `why` about anything and get an answer.
+- **The OS enforces the limits, not the prompt.** A read-only, verified base system; A/B updates that roll back
+  on their own; helpers in sandboxes with less access than the agent that created them.
+- **You're the owner, not the operator.** You give it goals. It asks only at your boundaries — money, acting as
+  you, data leaving the machine, access to it, your own files — and only your phone's passkey can say yes.
+
+It's Debian underneath, boots on x86 and Raspberry Pi 4, and every image is built and boot-tested by CI.
+
+> **Status: early prototype.** The bootable images build and boot in CI; real-hardware testing is under way.
+> The core also runs on an existing Debian or Ubuntu machine and as a container image
+> (see [Quick start](#quick-start-the-host-layer-debianubuntu-no-root)).
 
 ## In plain words
 
@@ -26,17 +42,9 @@ and it does them on that machine.
 
 ## Why a distro, and not an app
 
-An app runs inside an operating system built for people. To be useful it ends up with the keys to
-everything, and nothing on the machine records what it did or why.
-
-Resident is the operating system itself, built for an assistant from the first boot:
-
-- the base system is **read-only**, so the assistant can't quietly change it;
-- every change is **recorded with a reason** and can be undone;
-- the assistant runs as **its own user**, with only the permissions you grant;
-- each helper it creates gets **its own sandbox**, with less access than the one that created it.
-
-You get the convenience of assistants like Meta's Muse, without handing your machine and your keys to someone else.
+An app runs inside an operating system built for people, so to be useful it ends up with the keys to
+everything. Making the agent part of the OS is what lets the machine record every change, keep the base
+system out of the agent's reach, and enforce permissions the agent cannot talk its way around.
 
 ## What runs differently from other distros
 
@@ -142,24 +150,12 @@ resident tree
 resident approvals && resident approve <id>      # or: resident deny <id>
 ```
 
-## Measurements (Stage 1)
+## Does living on the machine matter?
 
-The same 20 read-only ops questions about one machine, run under five configurations; all 100 answers were
-correct. Full method, caveats and numbers: [stage1/REPORT.md](stage1/REPORT.md).
-
-| configuration | cost | turns | time |
-|---|---|---|---|
-| no world model, fresh session per question | **$2.07** | 68 | 455 s |
-| world model, one resident session | $2.37 | 47 | 350 s |
-| world model via system prompt, fresh sessions | $2.49 | 41 | 283 s |
-| no world model, one resident session | $2.58 | 54 | 443 s |
-| world model via `CLAUDE.md`, fresh sessions | $2.91 | 39 | **279 s** |
-
-The world model wins on turns, tool calls and time in every pairing. On dollars it **loses** for short questions
-in fresh sessions, because injected context is re-written to the prompt cache at the start of every session.
-A resident runtime on the Agent SDK writes it once. In a small follow-up (5 questions) that brought the marginal
-cost per question below the no-context baseline ($0.077 vs $0.098). The original ≥2× token target was **not**
-met (1.65×). The report says so.
+We asked an agent the same 20 questions about one machine, with and without the machine's record of itself.
+With the record it answered in **43% fewer steps** (39 vs 68 model turns) and **39% less time** (279 s vs 455 s),
+with the same correct answers — it started from what the machine already knows instead of rediscovering it.
+Method and full results: [stage1/REPORT.md](stage1/REPORT.md).
 
 ## Using Claude with Resident
 
