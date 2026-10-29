@@ -56,7 +56,7 @@ def main():
         c = resident.db()
         known = {r[0] for r in c.execute("SELECT key FROM changes WHERE kind='service'")}
         shipped = [(u, "adopted", "shipped unit file") for u in (l.split()[0] for l in out.splitlines() if l.split())
-                   if u not in known and not u.endswith("@.service")]
+                   if u not in known]  # templates too: their instances are explained through them
         resident.record_changes(c, base, None, [("service", u, a, d) for u, a, d in shipped], resident.now())
         c.commit()
     except Exception as e:

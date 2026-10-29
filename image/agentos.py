@@ -420,9 +420,16 @@ def score(fp=None):
 
     rows = []
     tot_n = tot_u = 0
+    def is_explained(kind, k):
+        if (kind, k) in explained:
+            return True
+        # an instance of a template unit (serial-getty@ttyS0.service) is explained by its template
+        m = re.match(r"^(.+@)[^/]*(\.[a-z]+)$", k) if kind in ("service", "user-service") else None
+        return bool(m) and (kind, m.group(1) + m.group(2)) in explained
+
     for kind, keys in scope.items():
         n = len(keys)
-        unexplained = [k for k in keys if (kind, k) not in explained]
+        unexplained = [k for k in keys if not is_explained(kind, k)]
         rows.append((kind, n, len(unexplained), unexplained))
         tot_n += n
         tot_u += len(unexplained)

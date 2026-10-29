@@ -25,5 +25,5 @@ if [ "$fail" -ne 0 ]; then
     /usr/bin/resident emit system "boot health check failed" "$(systemctl --failed --no-legend --plain)" 2>/dev/null || true
     exit 1
 fi
-echo "resident-health: $(/usr/bin/resident score 2>/dev/null | head -1)"   # read by CI from the console
+/usr/bin/resident score 2>/dev/null | awk 'NR==1{print "resident-health: " $0; next} $2 ~ /^[1-9]/{print "resident-health:   " $0}'   # read by CI from the console
 echo "resident-health: healthy; systemd-bless-boot may mark this slot good"
