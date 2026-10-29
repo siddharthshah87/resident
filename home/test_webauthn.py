@@ -7,6 +7,7 @@
 The end-to-end part runs its own server with RESIDENT_HOME_STATE=<temp dir>, so the real owner.json is never created.
 """
 import hashlib, json, os, shutil, subprocess, sys, tempfile, time, urllib.error, urllib.request
+OWNER_NAME = os.environ.get("RESIDENT_OWNER") or __import__("getpass").getuser()
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 TMP = tempfile.mkdtemp(prefix="resident-home-test-")
@@ -308,7 +309,7 @@ def e2e():
             code, out = http("api/approve/finish", {"aid": a["id"], **{k: b64e(v) for k, v in good.items()}})
             assert code == 200 and out["response"]["status"] == "done", out
             f = json.load(open(os.path.join(home.tree.APPROVALS, a["id"] + ".json")))
-            assert f["status"] == "approved" and f["decided_by"] == "owner (passkey)", f
+            assert f["status"] == "approved" and f["decided_by"] == f"{OWNER_NAME} (passkey)", f
             resp = json.load(open(os.path.join(home.tree.IND, "merit-reviews", "uplink", "responses", a["rid"] + ".json")))
             assert resp["status"] == "done" and "shop-app-dashboard-1" in resp["output"], resp
             code, out = http("api/approve/finish", {"aid": a["id"], **{k: b64e(v) for k, v in good.items()}})
@@ -325,7 +326,7 @@ def e2e():
             print(f"        CLI: {r.stderr.strip()}")
             code, out = http("api/deny", {"aid": b["id"]})
             assert code == 200 and out["approval"]["status"] == "denied", out
-            assert out["approval"]["decided_by"] == "owner (home page)"
+            assert out["approval"]["decided_by"] == f"{OWNER_NAME} (home page)"
         check("e2e: CLI `resident approve` refused once enrolled; deny via the page works", cli_refused)
 
         def audit_log():

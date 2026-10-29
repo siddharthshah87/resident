@@ -16,7 +16,9 @@ import sys
 import time
 from datetime import datetime, timezone
 
-ROOT = os.path.expanduser(os.environ.get("RESIDENT_HOME") or os.environ.get("HOLDFAST_HOME") or os.environ.get("AGENTOS_HOME") or "~/resident")
+ROOT = os.path.expanduser(os.environ.get("RESIDENT_HOME") or os.environ.get("HOLDFAST_HOME") or os.environ.get("AGENTOS_HOME")
+                          or ("/var/lib/resident" if not os.path.isdir(os.path.expanduser("~/resident")) and os.path.isdir("/var/lib/resident")
+                              else "~/resident"))  # on Resident Linux the record lives in /var/lib/resident
 DB = os.path.join(ROOT, "intents.db")
 LAST_FP = os.path.join(ROOT, "last_fingerprint.json")
 WORLD = os.path.join(ROOT, "machine.md")
@@ -71,6 +73,11 @@ def die(msg, code=1):
 
 
 def db():
+    # The owner may read the record without being able to write it (Resident Linux: it belongs to `agent`).
+    if os.path.exists(DB) and not os.access(DB, os.W_OK):
+        c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+        c.row_factory = sqlite3.Row
+        return c
     os.makedirs(ROOT, exist_ok=True)
     c = sqlite3.connect(DB)
     c.row_factory = sqlite3.Row
@@ -633,11 +640,47 @@ USAGE = """resident — make your machine your own assistant.
   resident world [--no-drift]                    regenerate machine.md (and detect drift)
   resident snapshot                              save current fingerprint as the drift baseline
   resident emit <kind> "<summary>" ["<detail>"]  drop an event for the resident agent (inbox/)
+  resident setup model                          Resident Linux: give agentd the owner's Anthropic API key (asked, not shown)
   resident spawn|tree|broker|approvals|approve|deny|retire   the family of individuals (lib/tree.py)
   resident request VERB RESOURCE [...]           inside a body: ask the parent (see lib/tree.py)
   resident propose "<summary>" --why "<sentence>" --verify "<cmd>" [--root] -- <cmd>
                                                  propose a change; only the owner's passkey approves (lib/propose.py)
 """
+
+
+CRED_DIR = "/var/lib/resident/credentials"
+
+
+def setup_model(rest):
+    """Give the resident agent its model sign-in (Resident Linux). The secret is read without echo, stored
+    readable only by `agent`, recorded as an intent (never the secret itself), and agentd is (re)started."""
+    import getpass, pwd
+    if not os.path.isdir("/var/lib/resident"):
+        die("setup model is for Resident Linux; on this machine agentd uses your own Claude Code sign-in")
+    if os.geteuid() != 0:
+        os.execvp("sudo", ["sudo", sys.executable, os.path.realpath(__file__), "setup", "model"] + rest)
+    # API key only. Anthropic's terms do not allow third-party products built on the Agent SDK to offer
+    # Claude.ai (subscription) sign-in or to store Claude.ai credentials; each owner brings their own API key.
+    # https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use
+    kind, var, hint = "api", "ANTHROPIC_API_KEY", "your Anthropic API key from console.anthropic.com (sk-ant-api...)"
+    secret = getpass.getpass(f"Paste {hint} (not shown): ").strip()
+    if not secret.startswith("sk-ant-api") or any(ch.isspace() for ch in secret):
+        die("that does not look like an Anthropic API key (sk-ant-api...); nothing was saved")
+    agent = pwd.getpwnam("agent")
+    os.makedirs(CRED_DIR, mode=0o700, exist_ok=True)
+    path = os.path.join(CRED_DIR, "claude.env")
+    fd = os.open(path + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"{var}={secret}\n")
+    os.chown(path + ".new", agent.pw_uid, agent.pw_gid)
+    os.replace(path + ".new", path)
+    os.chown(CRED_DIR, agent.pw_uid, agent.pw_gid)
+    who = os.environ.get("SUDO_USER") or getpass.getuser()
+    iid = intent_add("Thinks with Claude using the owner's own API key, stored on this machine and readable only by agent", None)
+    subprocess.run(["systemctl", "restart", "agentd.service"], check=False)
+    state = subprocess.run(["systemctl", "is-active", "agentd.service"], capture_output=True, text=True).stdout.strip()
+    print(f"saved for agent (intent #{iid}, by {who}); agentd is {state}")
+    return 0
 
 
 def main(argv):
@@ -771,6 +814,9 @@ def main(argv):
         save_last_fp(fingerprint())
         print(f"saved {LAST_FP}")
         return 0
+
+    if cmd == "setup" and len(args) > 1 and args[1] == "model":
+        return setup_model(args[2:])
 
     if cmd in ("tree", "broker", "approvals", "approve", "deny", "retire"):
         os.execv(sys.executable, [sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), "tree.py")] + args)

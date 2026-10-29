@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax of scripts, Python, policies and seed data
+        run: |
+          set -e
+          python3 - <<'PY'
+          import ast, glob, json, tomllib
+          py = glob.glob("lib/*.py") + glob.glob("home/*.py") + glob.glob("image/*.py") + [
+              "agentd/agentd.py", "percept/percept.py", "browser/browser-mcp.py", "root/resident-root-apply",
+              *glob.glob("image-vm/mkosi.extra/usr/lib/resident/*.py")]
+          for f in py:
+              ast.parse(open(f).read(), f)
+          for f in glob.glob("examples/policies/*.toml") + ["image-vm/mkosi.extra/etc/resident/policy.toml"]:
+              tomllib.load(open(f, "rb"))
+          for f in ["image/intents.json", "image-vm/intents.json"]:
+              json.load(open(f))
+          print(f"ok: {len(py)} python files, policies and seed data parse")
+          PY
+          for f in $(git ls-files '*.sh') image-vm/mkosi.postinst browser/agentos-browse; do bash -n "$f"; done
+          echo "ok: shell scripts"
+
+      - name: Install the CLI the way the README's quick start does
+        run: |
+          mkdir -p ~/.local/bin
+          for n in resident intent why; do ln -s "$PWD/lib/agentos.py" ~/.local/bin/$n; done
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Passkey and proposal tests
+        env:
+          RESIDENT_HOME_RPID: resident.test
+        run: |
+          python3 -m pip install --quiet --break-system-packages cryptography
+          python3 -I home/test_webauthn.py --unit
+          python3 -I home/test_proposals.py
+
+  container-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the container image
+        run: docker build -t resident-image:ci image/
+
+      - name: Boot it with systemd and require zero unexplained state
+        run: |
+          set -e
+          docker run -d --name ci --privileged --cgroupns=private --read-only \
+            --tmpfs /run --tmpfs /run/lock --tmpfs /tmp --tmpfs /etc -v ci-var:/var resident-image:ci /sbin/init
+          for i in $(seq 1 60); do
+            docker exec ci test -f /var/lib/resident/intents.db 2>/dev/null && \
+              [ "$(docker exec ci systemctl show -p ActiveState --value resident-firstboot)" != activating ] && break
+            sleep 2
+          done
+          docker exec ci systemctl is-system-running --wait || true
+          docker exec ci systemctl --failed --no-legend
+          docker exec ci resident score | tee score.txt
+          grep -q "UNEXPLAINED STATE: 0/" score.txt
+          docker exec ci why /etc/environment

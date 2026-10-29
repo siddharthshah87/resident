@@ -1,0 +1,91 @@
+name: image
+
+on:
+  push:
+    branches: [main]
+    paths: [image-vm/**, lib/**, agentd/**, percept/**, browser/**, .github/workflows/image.yml]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # only used to attach images to a release on v* tags
+
+env:
+  # the mkosi commit this recipe is tested with on the maintainer's machine
+  MKOSI_REF: 78362ba193cac046a0351c7d33af86bbd0e9cfc6
+
+jobs:
+  build-and-boot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Install build and boot tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf zstd pipx
+          pipx install "git+https://github.com/systemd/mkosi.git@${MKOSI_REF}"
+          ~/.local/bin/mkosi --version
+
+      - name: Build the disk image (public variant, no bundled Claude Code runtime)
+        working-directory: image-vm
+        run: |
+          VERSION="$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
+          case "$GITHUB_REF" in refs/tags/v*) VERSION="${GITHUB_REF_NAME#v}" ;; esac
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sudo env "PATH=$HOME/.local/bin:$PATH" RESIDENT_VERSION="$VERSION" ./build.sh -f
+          sudo chown -R "$(id -u):$(id -g)" out
+          ls -la out out/updates
+
+      - name: Boot it in QEMU and require a healthy, fully explained first boot
+        run: |
+          set -e
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+          IMG="image-vm/out/resident_${VERSION}.raw"
+          cp --sparse=always "$IMG" run.raw && truncate -s 16G run.raw
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
+          qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m 4G -machine q35 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=vars.fd \
+            -drive file=run.raw,format=raw,if=virtio -device virtio-rng-pci -nic user,model=virtio-net-pci \
+            -smbios 'type=11,value=io.systemd.stub.kernel-cmdline-extra=console=ttyS0 systemd.journald.forward_to_console=1' \
+            -display none -serial file:serial.log -daemonize -pidfile qemu.pid
+          for i in $(seq 1 120); do
+            grep -qaE 'resident-health: (healthy|UNHEALTHY)|emergency mode|Kernel panic' serial.log && break
+            sleep 3
+          done
+          tr -d '\r' < serial.log | grep -aE 'resident-health|\[FAILED\]|UNEXPLAINED|emergency' | head -40 || true
+          kill "$(cat qemu.pid)" || true
+          grep -qa 'resident-health: healthy' serial.log
+          grep -qaE 'resident-health: UNEXPLAINED STATE: 0/' serial.log
+
+      - name: Compress and checksum
+        run: |
+          cd image-vm/out
+          zstd -T0 -10 --sparse -q "resident_${VERSION}.raw" -o "resident_${VERSION}.raw.zst"
+          for f in updates/*; do zstd -T0 -10 -q "$f" -o "$(basename "$f").zst"; done
+          sha256sum *.zst > SHA256SUMS
+          ls -la *.zst SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resident-${{ env.VERSION }}
+          path: |
+            image-vm/out/*.zst
+            image-vm/out/SHA256SUMS
+          retention-days: 7
+
+      - name: Publish a release for v* tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" image-vm/out/*.zst image-vm/out/SHA256SUMS \
+            --title "Resident Linux $VERSION" \
+            --notes "Built and boot-tested by CI. Write the .raw image to a disk or USB SSD; verify with SHA256SUMS. The Claude Code runtime is not bundled: you download it on your own machine."

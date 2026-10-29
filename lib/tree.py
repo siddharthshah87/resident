@@ -21,7 +21,9 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import spawn as bodies  # noqa: E402
 import propose  # noqa: E402
 
-ROOT = os.path.expanduser("~/resident")
+ROOT = os.path.expanduser(os.environ.get("RESIDENT_HOME") or os.environ.get("HOLDFAST_HOME") or os.environ.get("AGENTOS_HOME")
+                          or ("/var/lib/resident" if not os.path.isdir(os.path.expanduser("~/resident")) and os.path.isdir("/var/lib/resident")
+                              else "~/resident"))
 IND = os.path.join(ROOT, "individuals")
 REG = os.path.join(IND, "registry.json")
 APPROVALS = os.environ.get("RESIDENT_APPROVALS") or os.path.join(ROOT, "approvals")  # override: tests only
@@ -64,6 +66,7 @@ def die(msg):
 
 def log(rec):
     rec["ts"] = now()
+    os.makedirs(os.path.dirname(BROKER_LOG), exist_ok=True)  # first run on a fresh machine
     with open(BROKER_LOG, "a") as fh:
         fh.write(json.dumps(rec) + "\n")
 
@@ -139,8 +142,11 @@ def registry():
     try:
         return json.load(open(REG))
     except (OSError, ValueError):
-        r = {HEAD: {"name": HEAD, "parent": None, "kind": "host", "policy": HEAD_POLICY, "born": now(),
-                    "purpose": read_policy(HEAD_POLICY).get("individual", {}).get("purpose", "")}}
+        try:  # a fresh machine may not have written the head's policy yet
+            purpose = read_policy(HEAD_POLICY).get("individual", {}).get("purpose", "")
+        except OSError:
+            purpose = ""
+        r = {HEAD: {"name": HEAD, "parent": None, "kind": "host", "policy": HEAD_POLICY, "born": now(), "purpose": purpose}}
         save_registry(r)
         return r
 

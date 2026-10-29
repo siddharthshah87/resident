@@ -6,7 +6,8 @@ Wants=network-online.target
 # Both are produced on the box, never baked: API credentials by the human (README "credentials"),
 # the venv by `resident-setup-agentd` on first run with network.
 ConditionPathExists=/var/lib/resident/credentials/claude.env
-ConditionPathExists=/var/lib/resident/agentd/.venv/bin/python
+# public images ship without the Claude Code runtime (it is the owner's to download); agentd waits for it
+ConditionPathExists=/usr/lib/resident/agentd/venv/bin/python
 
 [Service]
 Type=simple
@@ -14,10 +15,10 @@ User=agent
 Group=agent
 WorkingDirectory=/var/lib/resident/agentd
 Environment=RESIDENT_HOME=/var/lib/resident HOME=/var/lib/resident AGENTD_SYSPROMPT=preset
-Environment=PATH=/var/lib/resident/agentd/.venv/bin:/var/lib/resident/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/usr/lib/resident/agentd/venv/bin:/var/lib/resident/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=XDG_RUNTIME_DIR=/run/user/980 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/980/bus
 EnvironmentFile=/var/lib/resident/credentials/claude.env
-ExecStart=/usr/bin/flock -n /var/lib/resident/agentd/agentd.service.lock /var/lib/resident/agentd/.venv/bin/python /usr/lib/resident/agentd/agentd.py run
+ExecStart=/usr/bin/flock -n /var/lib/resident/agentd/agentd.service.lock /usr/lib/resident/agentd/venv/bin/python /usr/lib/resident/agentd/agentd.py run
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/lib/resident/agentd/agentd.log

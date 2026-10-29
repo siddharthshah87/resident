@@ -142,6 +142,20 @@ A resident runtime on the Agent SDK writes it once. In a small follow-up (5 ques
 cost per question below the no-context baseline ($0.077 vs $0.098). The original ≥2× token target was **not**
 met (1.65×). The report says so.
 
+## Using Claude with Resident
+
+Resident's assistant runs on the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview), which runs the
+unmodified Claude Code binary. Anthropic's [terms](https://code.claude.com/docs/en/legal-and-compliance) shape how that works:
+
+- **Bring your own API key.** Each owner uses their own Anthropic API key (or Amazon Bedrock, Google Cloud or Microsoft
+  Foundry credentials), billed to them. Resident does not offer "sign in with your Claude account" and does not store
+  Claude.ai credentials: Anthropic does not allow third-party products built on the Agent SDK to do that.
+- **Shipped as published.** The Claude Code binary is included unmodified, with its sign-in methods intact. Usage is
+  never resold or routed through anyone else's account.
+- **Naming.** Resident runs Claude Code and is powered by Claude; it is not made or endorsed by Anthropic.
+- **Health data.** Anthropic's BAA covers Claude Code only under a Claude for Enterprise HIPAA configuration or Zero Data
+  Retention, and not Remote Control or the mobile app. Don't point Resident at patient information without that in place.
+
 ## Safety
 
 - **Approvals are not yet tied to the owner.** Any local process running as your user can run `resident approve`.

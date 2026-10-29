@@ -32,3 +32,14 @@ sed -i 's|^root:[^:]*:|root:!:|' "$R/etc/shadow" || true
 # Record the policy hash so `why /etc/resident/policy.toml` has a fixed answer per image.
 mkdir -p "$R/usr/share/resident"
 sha256sum "$R/etc/resident/policy.toml" | cut -c1-16 > "$R/usr/share/resident/policy.sha256"
+
+# agentd's runtime ships in the read-only image: a venv with the pinned Claude Agent SDK (which bundles the
+# Claude Code CLI). Installed OFFLINE from wheels staged in usr/lib/resident/wheels, so builds are reproducible;
+# the wheels are removed afterwards. Re-stage them with:  ./stage-wheels.sh
+W="$R/usr/lib/resident/wheels"
+if [ -d "$W" ]; then
+    mkosi-chroot python3 -m venv /usr/lib/resident/agentd/venv
+    mkosi-chroot /usr/lib/resident/agentd/venv/bin/pip install --no-index --no-cache-dir --disable-pip-version-check \
+        --find-links /usr/lib/resident/wheels "claude-agent-sdk==0.2.174"
+    rm -rf "${W:?}"
+fi

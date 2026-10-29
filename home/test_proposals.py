@@ -10,6 +10,8 @@ The real owner.json, approvals, intents.db, inbox and outbox are never touched.
 """
 import hashlib, importlib.machinery, importlib.util, json, os, shutil, subprocess, sys, tempfile, time
 import urllib.error, urllib.request
+OWNER_NAME = os.environ.get("RESIDENT_OWNER") or __import__("getpass").getuser()
+SAMPLE_PROPOSAL = os.path.join(os.path.expanduser("~"), "resident", "approvals", "abc123.json")
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 RES = os.path.dirname(HERE)
@@ -355,13 +357,13 @@ def e2e():
             assert os.path.exists(proof)
             p = pfile(aid)
             assert p["status"] == "done" and p["verify_ok"] is True and p["exit"] == 0 and p["intent"] == res["intent"], p
-            assert p["approved_by"] == "owner (passkey)" and p["approved_at"]
+            assert p["approved_by"] == f"{OWNER_NAME} (passkey)" and p["approved_at"]
             assert set(p["assertion"]) == {"rawId", "clientDataJSON", "authenticatorData", "signature"}
             assert b64d(p["assertion"]["signature"]) == a["signature"]
             assert outbox_texts()[-1] == "Done: Create the proof file. Verified.\n", outbox_texts()[-1]
             r = run([os.path.expanduser("~/.local/bin/intent"), "show", str(p["intent"])])
             assert "Create the proof file — Because the test says so. (approved by passkey)" in r.stdout, r.stdout
-            assert "by owner" in r.stdout and "verify=PASS" in r.stdout and f"touch {proof}" in r.stdout, r.stdout
+            assert f"by {OWNER_NAME}" in r.stdout and "verify=PASS" in r.stdout and f"touch {proof}" in r.stdout, r.stdout
             assert not any(x["id"] == aid for x in http("api/state", origin=False)[1]["pending"])
             st.update(aid=aid, a=a)
             print(f"        {aid} → intent #{p['intent']}: {r.stdout.splitlines()[0]}")
@@ -424,10 +426,10 @@ def e2e():
             env = {k: v for k, v in os.environ.items() if k != "RESIDENT_ROOT_HELPER"}
             code = ("import sys,json; sys.path.insert(0, sys.argv[1]); import home; "
                     "print(json.dumps(home.apply_argv({'root': True, 'command': 'x', 'verify': 'v'}, sys.argv[2], 7)))")
-            r = run([sys.executable, "-I", "-c", code, HERE, "~/resident/approvals/abc123.json"], env=env)
+            r = run([sys.executable, "-I", "-c", code, HERE, SAMPLE_PROPOSAL], env=env)
             argv = json.loads(r.stdout)
             assert argv[1:] == ["apply", "7", "--verify", "v", "--", "sudo -n /usr/local/libexec/resident-root-apply "
-                                "~/resident/approvals/abc123.json"], argv
+                                + SAMPLE_PROPOSAL], argv
             argv2 = json.loads(run([sys.executable, "-I", "-c", code.replace("True", "False"), HERE, "/p"], env=env).stdout)
             assert argv2[-1] == "x", argv2
         check("e2e: production root command is `intent apply N --verify V -- sudo -n /usr/local/libexec/resident-root-apply <path>`",
