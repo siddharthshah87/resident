@@ -80,7 +80,7 @@ jobs:
           qemu-system-aarch64 -M virt,gic-version=max $ACCEL -smp 4 -m 4G \
             -drive if=pflash,format=raw,readonly=on,file="$CODE" -drive if=pflash,format=raw,file=vars.fd \
             -drive file=run.raw,format=raw,if=none,id=hd0 -device virtio-blk-pci,drive=hd0 \
-            -device virtio-rng-pci -nic user,model=virtio-net-pci,romfile= \
+            -device virtio-rng-pci -netdev user,id=n0 -device virtio-net-pci,netdev=n0,romfile= \
             -smbios 'type=11,value=io.systemd.stub.kernel-cmdline-extra=console=ttyAMA0 systemd.journald.forward_to_console=1' \
             -display none -serial file:serial.log -daemonize -pidfile qemu.pid
           # TCG is slow: allow ~25 min for the first boot
