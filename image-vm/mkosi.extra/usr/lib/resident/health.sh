@@ -6,7 +6,7 @@ fail=0
 chk() { if "$@" >/dev/null 2>&1; then echo "ok   $*"; else echo "FAIL $*"; fail=1; fi; }
 
 chk systemctl is-active dbus.service
-chk systemctl is-active polkit.service
+chk busctl --system --timeout=10 call org.freedesktop.PolicyKit1 /org/freedesktop/PolicyKit1/Authority org.freedesktop.DBus.Peer Ping  # activates polkit on demand
 chk systemctl is-active ssh.service
 chk systemctl is-active systemd-networkd.service
 chk findmnt -t overlay /etc                            # persistent /etc came up

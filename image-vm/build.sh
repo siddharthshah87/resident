@@ -18,6 +18,10 @@ echo "# host prep if not done:  sudo apt install -y mkosi systemd-boot qemu-syst
 
 command -v mkosi >/dev/null || { echo "mkosi not found (pipx install git+https://github.com/systemd/mkosi.git)" >&2; exit 1; }
 
+# --- permissions: files from a home checkout are often group-writable (umask 002). In an OS image that is a
+# security bug, and sshd's StrictModes refuses keys under such directories. Normalise before every build.
+chmod -R go-w mkosi.extra
+
 # --- stage: copy the components that must ship in the image into mkosi.extra -------------------
 # (kept out of git-style tracking of this dir: they are copies of ../lib, ../agentd, ../percept, ../browser)
 L=mkosi.extra/usr/lib/resident

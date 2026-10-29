@@ -38,6 +38,28 @@ Resident is the operating system itself, built for an assistant from the first b
 
 You get the convenience of assistants like Meta's Muse, without handing your machine and your keys to someone else.
 
+## What runs differently from other distros
+
+Underneath it is ordinary Debian: the same kernel, packages and systemd. What's different is how the
+machine is put together and who it's built for.
+
+| | a typical distro | Resident |
+|---|---|---|
+| **System files** | Writable; anything with root can change them | **Read-only and verified** (erofs + dm-verity): a changed byte fails verification at boot |
+| **Updates** | Packages changed in place | **Whole-image A/B updates**: the new version goes into the spare slot; if it fails to boot three times, the machine falls back on its own |
+| **Boot** | Bootloader + kernel + initrd as separate files | **One unified boot image** (systemd-boot + UKI), so the kernel, its command line and the root's hash travel together |
+| **`/etc`** | Accumulates edits forever | **Rebuilt from the image at every boot**; local changes live in a recorded overlay |
+| **Who runs it** | A human at a keyboard | **An assistant** (`agentd`) running as its own user, `agent`, from first boot |
+| **Permissions** | sudo: all or nothing | **A readable policy file** plus polkit rules: the assistant may manage only its own services, and privileged steps need a recorded intent |
+| **Memory of changes** | Shell history, if anything | **An intent log**: every service, port, package, schedule and config file has a reason, and `why` answers for any of them |
+| **Approvals** | Typing a password | **A passkey on your phone**; agents can ask, only the passkey can approve |
+| **More software** | `apt install` into the live system | **Helpers in sandboxed containers**, each with less access than its parent, or signed system extensions |
+| **Interface** | A desktop | **A conversation with the assistant**, on your phone or in a browser; a desktop is optional |
+
+Status, plainly: the read-only verified root, the unified boot image and A/B partition layout are built and
+boot in a VM. The intent log, helpers, broker and passkey approvals run today on the prototype host. The
+assistant-as-its-own-user and A/B update rollback are written but not yet exercised on the bootable image.
+
 ## How it works
 
 - **Config is a cache; intent is the truth.** Every service, listening port, package, container, cron line

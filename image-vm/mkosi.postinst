@@ -6,6 +6,12 @@ set -euo pipefail
 R="${BUILDROOT:?BUILDROOT must point at the image root}"
 [ -f "$R/usr/lib/os-release" ] || { echo "not an image root: $R" >&2; exit 1; }
 
+# Debian installs the kernel as /boot/vmlinuz-<ver>; mkosi builds the UKI from /usr/lib/modules/<ver>/vmlinuz.
+for m in "$R"/usr/lib/modules/*/; do
+    v=$(basename "$m")
+    [ -e "$m/vmlinuz" ] || [ ! -e "$R/boot/vmlinuz-$v" ] || cp "$R/boot/vmlinuz-$v" "$m/vmlinuz"
+done
+
 # /home, /srv, /opt live on /var (root is read-only). tmpfiles creates /var/{home,srv,opt} at boot.
 for d in home srv opt; do
     if [ -d "${R:?}/${d:?}" ] && [ ! -L "${R:?}/${d:?}" ]; then

@@ -7,7 +7,7 @@ import os
 import sys
 
 sys.path.insert(0, "/usr/lib/resident")
-import resident  # noqa: E402  (ships at /usr/lib/resident/agentos.py)
+import agentos as resident  # noqa: E402  (ships at /usr/lib/resident/agentos.py)
 
 ROOT = resident.ROOT
 MARK = os.path.join(ROOT, ".seeded")

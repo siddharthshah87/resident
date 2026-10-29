@@ -19,11 +19,12 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import spawn as bodies  # noqa: E402
+import propose  # noqa: E402
 
 ROOT = os.path.expanduser("~/resident")
 IND = os.path.join(ROOT, "individuals")
 REG = os.path.join(IND, "registry.json")
-APPROVALS = os.path.join(ROOT, "approvals")
+APPROVALS = os.environ.get("RESIDENT_APPROVALS") or os.path.join(ROOT, "approvals")  # override: tests only
 BROKER_LOG = os.path.join(ROOT, "broker.jsonl")
 INTENT = os.path.expanduser("~/.local/bin/intent")
 RESIDENT = os.path.expanduser("~/.local/bin/resident")
@@ -360,6 +361,14 @@ def decide(aid, approve, who=OWNER, passkey=False):
     a = json.load(open(p))
     if a["status"] != "pending":
         die(f"approval {aid} is already {a['status']}")
+    if propose.is_proposal(a):
+        if approve:  # a proposal runs a command the agent wrote: only a passkey signature over it can approve it
+            die("proposals can only be approved with the owner's passkey on the home page (deny still works here)")
+        a.update(status="denied", decided_by=who, decided=now())
+        propose.write_json(p, a)
+        propose.outbox("result", f"Denied: {a.get('summary', aid)}. Nothing was changed.")
+        log({"event": "decision", "approval": aid, "kind": "proposal", "status": "denied", "by": who})
+        return a, {"status": "denied", "reason": f"denied by {who}"}
     resp = execute(a["requester"], a["verb"], a["resource"], approved_by=who) if approve else \
         {"status": "denied", "reason": f"denied by {who}"}
     resp.update({"id": a["rid"], "verb": a["verb"], "resource": a["resource"], "ts": now(), "approval": aid})
@@ -471,6 +480,10 @@ def main(a):
     elif cmd == "approvals":
         rows = pending()
         for x in rows:
+            if propose.is_proposal(x):
+                print(f"{x['id']}  {x['requester']} proposes{' (as root)' if x.get('root') else ''}: {x.get('summary')}"
+                      f" — {x.get('why')} [approve on the home page]")
+                continue
             print(f"{x['id']}  {x['requester']} asks {x['verb']} {x['resource']} — {x['why_escalated']}"
                   + (f" (reason: {x['reason']})" if x["reason"] else ""))
         if not rows:

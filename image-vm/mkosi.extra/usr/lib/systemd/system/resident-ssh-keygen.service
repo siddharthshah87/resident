@@ -1,0 +1,14 @@
+[Unit]
+Description=resident: generate this machine's SSH host keys (never baked into the image)
+DefaultDependencies=no
+After=resident-etc-overlay.service
+Before=ssh.service sshd@.service
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/ssh-keygen -A
+
+[Install]
+WantedBy=multi-user.target

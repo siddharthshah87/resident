@@ -635,6 +635,8 @@ USAGE = """resident — make your machine your own assistant.
   resident emit <kind> "<summary>" ["<detail>"]  drop an event for the resident agent (inbox/)
   resident spawn|tree|broker|approvals|approve|deny|retire   the family of individuals (lib/tree.py)
   resident request VERB RESOURCE [...]           inside a body: ask the parent (see lib/tree.py)
+  resident propose "<summary>" --why "<sentence>" --verify "<cmd>" [--root] -- <cmd>
+                                                 propose a change; only the owner's passkey approves (lib/propose.py)
 """
 
 
@@ -772,6 +774,9 @@ def main(argv):
 
     if cmd in ("tree", "broker", "approvals", "approve", "deny", "retire"):
         os.execv(sys.executable, [sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), "tree.py")] + args)
+
+    if cmd == "propose":
+        os.execv(sys.executable, [sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), "propose.py")] + args[1:])
 
     if cmd in ("request", "response"):
         up = os.path.join(ROOT, "uplink")

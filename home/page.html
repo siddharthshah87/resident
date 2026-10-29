@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Resident Home</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--fg:#1d1d1f;--mut:#6b6b70;--line:#e3e1dc;--acc:#1f6f4a;--accfg:#fff;--warn:#a33b2b;--chip:#efede8;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#121214;--card:#1c1c1f;--fg:#ececee;--mut:#9a9aa1;--line:#2c2c31;--acc:#3fae7a;--accfg:#08140e;--warn:#ff7a66;--chip:#26262b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+main{max-width:720px;margin:0 auto;padding:16px 16px calc(32px + env(safe-area-inset-bottom))}
+h1{font-size:22px;margin:8px 0 2px}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:28px 0 10px}
+.sub{color:var(--mut);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:10px 0}
+.row{display:flex;gap:10px;margin-top:12px}
+button{flex:1;font:inherit;font-weight:600;border-radius:11px;padding:12px 14px;border:1px solid var(--line);background:var(--chip);color:var(--fg);cursor:pointer}
+button.go{background:var(--acc);border-color:var(--acc);color:var(--accfg)}
+button.no{color:var(--warn)}
+button:disabled{opacity:.5}
+.verb{font-family:var(--mono);font-size:15px;word-break:break-all}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px;margin-top:8px}
+.kv dt{color:var(--mut)} .kv dd{margin:0;word-break:break-word}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:2px 10px;font-size:13px}
+.ok{color:var(--acc)} .bad{color:var(--warn)}
+pre{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;font:12px/1.4 var(--mono);overflow-x:auto;white-space:pre;margin:0}
+#msg{min-height:1.4em;margin-top:10px;font-size:14px}
+.empty{color:var(--mut);font-size:14px}
+.title{font-weight:600;font-size:17px}
+.why{margin-top:4px}
+.badge{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600;margin-left:6px;vertical-align:2px;background:var(--warn);color:var(--card)}
+details{margin-top:8px;font-size:14px} summary{cursor:pointer;color:var(--mut)}
+details code,.mono{font:13px/1.4 var(--mono);word-break:break-all;white-space:pre-wrap}
+.feed .m{border-top:1px solid var(--line);padding:8px 0;font-size:14px;white-space:pre-wrap;word-break:break-word}
+.feed .m:first-child{border-top:0}
+.feed .t{color:var(--mut);font-size:12px;display:block}
+textarea{width:100%;font:inherit;border:1px solid var(--line);border-radius:11px;padding:10px;background:var(--card);color:var(--fg);min-height:70px;resize:vertical}
+</style>
+</head>
+<body>
+<main>
+  <h1>Resident</h1>
+  <div class="sub" id="who">loading…</div>
+  <div id="enroll"></div>
+  <div id="msg" role="status"></div>
+  <h2>Waiting for you</h2>
+  <div id="pending"><div class="empty">loading…</div></div>
+  <h2>Conversation</h2>
+  <div class="card feed" id="feed"><div class="empty">loading…</div></div>
+  <div class="card"><textarea id="askText" maxlength="2000" placeholder="Ask the resident agent…" aria-label="Message to the resident agent"></textarea>
+    <div class="row"><button class="go" id="askBtn">Send</button></div></div>
+  <h2>Family</h2>
+  <pre id="tree">…</pre>
+</main>
+<script nonce="__NONCE__">
+"use strict";
+let base = location.pathname; if (!base.endsWith('/')) base += '/';
+const params = new URLSearchParams(location.search);
+const enrollToken = params.get('enroll');
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const b64d = s => { s = s.replace(/-/g,'+').replace(/_/g,'/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
+const b64e = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function msg(text, bad) { const m = $('msg'); m.textContent = text || ''; m.className = bad ? 'bad' : 'ok'; }
+async function post(path, body) {
+  const r = await fetch(base + 'api/' + path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+async function enroll(btn) {
+  btn.disabled = true; msg('');
+  try {
+    if (!window.PublicKeyCredential) throw new Error('this browser has no passkey support');
+    const o = (await post('enroll/options', {token: enrollToken})).publicKey;
+    o.challenge = b64d(o.challenge); o.user.id = b64d(o.user.id);
+    const c = await navigator.credentials.create({publicKey: o});
+    await post('enroll/finish', {token: enrollToken, rawId: b64e(c.rawId),
+      clientDataJSON: b64e(c.response.clientDataJSON), attestationObject: b64e(c.response.attestationObject)});
+    history.replaceState(null, '', base);
+    msg('Passkey enrolled. Approvals now need this device.');
+    $('enroll').textContent = '';
+    load();
+  } catch (e) { msg('Enrollment failed: ' + e.message, true); btn.disabled = false; }
+}
+async function approve(aid, btns, isProposal) {
+  btns.forEach(b => b.disabled = true); msg(isProposal ? 'Waiting for your passkey, then running and checking the fix…' : '');
+  try {
+    const o = (await post('approve/options', {aid})).publicKey;
+    o.challenge = b64d(o.challenge);
+    o.allowCredentials = o.allowCredentials.map(c => ({type: c.type, id: b64d(c.id)}));
+    const a = await navigator.credentials.get({publicKey: o});
+    const r = await post('approve/finish', {aid, rawId: b64e(a.rawId), clientDataJSON: b64e(a.response.clientDataJSON),
+      authenticatorData: b64e(a.response.authenticatorData), signature: b64e(a.response.signature)});
+    msg(r.result ? r.result.message : ('Approved ' + aid + ' → ' + (r.response && r.response.status)), r.result && r.result.status !== 'done');
+  } catch (e) { msg('Approval failed: ' + e.message, true); }
+  load();
+}
+async function deny(aid, btns) {
+  btns.forEach(b => b.disabled = true); msg('');
+  try { await post('deny', {aid}); msg('Denied ' + aid); } catch (e) { msg('Deny failed: ' + e.message, true); }
+  load();
+}
+function proposalCard(a, enrolled) {
+  const c = el('div', 'card');
+  const t = el('div', 'title', a.summary);
+  if (a.root) t.appendChild(el('span', 'badge', 'runs as root'));
+  c.appendChild(t);
+  c.appendChild(el('div', 'why', a.why));
+  const dl = el('dl', 'kv');
+  const add = (k, v, cls) => { if (!v) return; dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', cls, v)); };
+  add('check', a.verify, 'mono'); add('from', a.requester);
+  add('asked', a.ts ? new Date(a.ts).toLocaleString() : ''); add('id', a.id);
+  c.appendChild(dl);
+  const d = el('details'); d.appendChild(el('summary', null, 'Exact command'));
+  d.appendChild(el('code', null, a.command)); c.appendChild(d);
+  if (!a.valid) c.appendChild(el('div', 'bad', 'This proposal is malformed and cannot be approved.'));
+  const row = el('div', 'row');
+  const yes = el('button', 'go', enrolled ? 'Approve (passkey)' : 'Approve (enroll first)');
+  const no = el('button', 'no', 'Deny');
+  yes.disabled = !enrolled || !a.valid;
+  yes.onclick = () => approve(a.id, [yes, no], true); no.onclick = () => deny(a.id, [yes, no]);
+  row.append(yes, no); c.appendChild(row);
+  return c;
+}
+function renderFeed(items) {
+  const f = $('feed'); f.textContent = '';
+  if (!items || !items.length) { f.appendChild(el('div', 'empty', 'No messages yet.')); return; }
+  items.forEach(m => { const d = el('div', 'm'); d.appendChild(el('span', 't', new Date(m.ts).toLocaleString() + (m.kind ? ' · ' + m.kind : '')));
+    d.appendChild(document.createTextNode(m.text)); f.appendChild(d); });
+}
+async function sendAsk() {
+  const t = $('askText'), b = $('askBtn'), text = t.value.trim();
+  if (!text) return;
+  b.disabled = true;
+  try { await post('ask', {text}); t.value = ''; msg('Sent. The answer will appear in the conversation.'); }
+  catch (e) { msg('Send failed: ' + e.message, true); }
+  b.disabled = false;
+}
+$('askBtn').onclick = sendAsk;
+function card(a, enrolled) {
+  if (a.kind === 'proposal') return proposalCard(a, enrolled);
+  const c = el('div', 'card');
+  c.appendChild(el('div', 'verb', a.verb + ' ' + a.resource));
+  const dl = el('dl', 'kv');
+  const add = (k, v) => { if (!v) return; dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); };
+  add('from', a.requester); add('lineage', (a.lineage || []).join(' › ')); add('why here', a.why_escalated);
+  add('reason', a.reason); add('asked', a.ts ? new Date(a.ts).toLocaleString() : ''); add('id', a.id);
+  c.appendChild(dl);
+  const row = el('div', 'row');
+  const yes = el('button', 'go', enrolled ? 'Approve (passkey)' : 'Approve (enroll first)');
+  const no = el('button', 'no', 'Deny');
+  yes.disabled = !enrolled;
+  yes.onclick = () => approve(a.id, [yes, no]); no.onclick = () => deny(a.id, [yes, no]);
+  row.append(yes, no); c.appendChild(row);
+  return c;
+}
+async function load() {
+  try {
+    const r = await fetch(base + 'api/state'); const s = await r.json();
+    $('who').textContent = s.owner + ' · ' + s.rp_id + ' · ';
+    $('who').appendChild(el('span', s.enrolled ? 'chip ok' : 'chip bad', s.enrolled ? 'passkey enrolled' : 'no passkey yet'));
+    const p = $('pending'); p.textContent = '';
+    if (!s.pending.length) p.appendChild(el('div', 'empty', 'Nothing waiting.'));
+    s.pending.forEach(a => p.appendChild(card(a, s.enrolled)));
+    $('tree').textContent = s.tree;
+    renderFeed(s.feed);
+    if (enrollToken && !$('enroll').childElementCount && !$('msg').textContent) {
+      const c = el('div', 'card');
+      c.appendChild(el('div', null, s.enrolled ? 'This link replaces the enrolled passkey with one on this device.' : 'Make this device the owner\'s key: approvals will need its Face ID / fingerprint.'));
+      const row = el('div', 'row'); const b = el('button', 'go', 'Enroll this device'); b.onclick = () => enroll(b);
+      row.appendChild(b); c.appendChild(row); $('enroll').appendChild(c);
+    }
+  } catch (e) { msg('Could not load state: ' + e.message, true); }
+}
+load(); setInterval(load, 15000);
+</script>
+</body>
+</html>
