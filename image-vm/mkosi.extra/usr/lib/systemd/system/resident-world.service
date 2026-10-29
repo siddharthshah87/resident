@@ -5,8 +5,10 @@ Wants=resident-firstboot.service
 
 [Service]
 Type=oneshot
-User=agent
+# Bookkeeping must see the whole machine (polkit's rules.d is 0700): run as root, but write the shared
+# record as group agent (umask 0002) so agentd can keep updating it. agentd itself stays unprivileged.
 Group=agent
+UMask=0002
 Environment=RESIDENT_HOME=/var/lib/resident RESIDENT_AUTHOR=system HOME=/var/lib/resident
 ExecStart=/usr/lib/resident/agentos.py world
 StandardOutput=null

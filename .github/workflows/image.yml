@@ -55,7 +55,7 @@ jobs:
           cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
           qemu-system-x86_64 -enable-kvm -cpu host -smp 2 -m 4G -machine q35 \
             -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=vars.fd \
-            -drive file=run.raw,format=raw,if=virtio -device virtio-rng-pci -nic user,model=virtio-net-pci \
+            -drive file=run.raw,format=raw,if=virtio -device virtio-rng-pci -nic user,model=virtio-net-pci,romfile= \
             -smbios 'type=11,value=io.systemd.stub.kernel-cmdline-extra=console=ttyS0 systemd.journald.forward_to_console=1' \
             -display none -serial file:serial.log -daemonize -pidfile qemu.pid
           for i in $(seq 1 120); do

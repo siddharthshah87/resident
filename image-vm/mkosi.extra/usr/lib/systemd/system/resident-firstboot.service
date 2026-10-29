@@ -8,8 +8,10 @@ Before=resident-world.timer agentd.service percept.service agent-browser.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-User=agent
+# Bookkeeping must see the whole machine (polkit's rules.d is 0700): run as root, but write the shared
+# record as group agent (umask 0002) so agentd can keep updating it. agentd itself stays unprivileged.
 Group=agent
+UMask=0002
 Environment=RESIDENT_HOME=/var/lib/resident RESIDENT_AUTHOR=image HOME=/var/lib/resident
 ExecStart=/usr/lib/resident/firstboot.py
 ProtectSystem=strict
