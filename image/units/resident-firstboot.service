@@ -1,7 +1,8 @@
 [Unit]
 Description=resident first boot: seed the intent log with the reason for every package, service and config file
 Documentation=file:/usr/lib/resident/intents.json
-ConditionPathExists=!/var/lib/resident/intents.db
+# gate on a marker written only after seeding succeeds: any early `resident` call creates intents.db
+ConditionPathExists=!/var/lib/resident/.seeded
 After=dbus.service systemd-tmpfiles-setup.service systemd-logind.service getty.target
 Wants=dbus.service
 
@@ -13,6 +14,7 @@ Group=agent
 UMask=0002
 Environment=RESIDENT_HOME=/var/lib/resident RESIDENT_AUTHOR=image
 ExecStart=/usr/bin/python3 -I /usr/lib/resident/seed-intents.py /usr/lib/resident/intents.json
+ExecStartPost=/usr/bin/touch /var/lib/resident/.seeded
 # the drift baseline is taken after this unit has left the 'running' state, so first boot itself is not drift
 ExecStopPost=/usr/bin/resident snapshot
 

@@ -30,8 +30,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf zstd pipx
-          pipx install "git+https://github.com/systemd/mkosi.git@${MKOSI_REF}"
-          ~/.local/bin/mkosi --version
+          # GitHub's runners point pipx at /opt/pipx_bin; install where the build step looks
+          PIPX_BIN_DIR="$HOME/.local/bin" PIPX_HOME="$HOME/.local/pipx" pipx install "git+https://github.com/systemd/mkosi.git@${MKOSI_REF}"
+          "$HOME/.local/bin/mkosi" --version
 
       - name: Build the disk image (public variant, no bundled Claude Code runtime)
         working-directory: image-vm
